@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mixer Scale</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main>
+    <h1>Mixer Scale</h1>
+    <div class="weight" id="weight">--</div>
+    <section class="target">
+      <div>
+        <span>Этап</span>
+        <strong id="stage">--</strong>
+      </div>
+      <div>
+        <span>Осталось</span>
+        <strong id="remaining">--</strong>
+      </div>
+      <div>
+        <span>Лопат</span>
+        <strong id="shovels">--</strong>
+      </div>
+    </section>
+    <table>
+      <thead>
+        <tr><th>Канал</th><th>Raw</th><th>Вес</th></tr>
+      </thead>
+      <tbody id="channels"></tbody>
+    </table>
+    <section class="wifi">
+      <h2>Wi-Fi</h2>
+      <div class="wifi-status">
+        <div>
+          <span>Точка</span>
+          <strong id="apSsid">--</strong>
+        </div>
+        <div>
+          <span>Сеть</span>
+          <strong id="staState">--</strong>
+        </div>
+        <div>
+          <span>IP</span>
+          <strong id="staIp">--</strong>
+        </div>
+      </div>
+      <form id="wifiForm">
+        <label>
+          SSID
+          <input id="wifiSsid" name="ssid" maxlength="32" autocomplete="off">
+        </label>
+        <label>
+          Пароль
+          <input id="wifiPassword" name="password" type="password" maxlength="64" autocomplete="new-password">
+        </label>
+        <button type="submit">Сохранить</button>
+        <span id="wifiMessage"></span>
+      </form>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

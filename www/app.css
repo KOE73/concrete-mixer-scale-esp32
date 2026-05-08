@@ -1,0 +1,136 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #111;
+  color: #eee;
+}
+
+body {
+  margin: 24px;
+}
+
+main {
+  max-width: 720px;
+  margin: auto;
+}
+
+.weight {
+  margin: 20px 0;
+  font-size: 64px;
+  font-weight: 700;
+}
+
+.target {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.target div {
+  border: 1px solid #333;
+  padding: 12px;
+}
+
+.target span {
+  display: block;
+  color: #aaa;
+  font-size: 13px;
+}
+
+.target strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+td,
+th {
+  border-bottom: 1px solid #333;
+  padding: 8px;
+  text-align: right;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+.wifi {
+  margin-top: 28px;
+  border-top: 1px solid #333;
+  padding-top: 20px;
+}
+
+.wifi h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.wifi-status {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.wifi-status div {
+  border: 1px solid #333;
+  padding: 12px;
+}
+
+.wifi-status span,
+label {
+  display: block;
+  color: #aaa;
+  font-size: 13px;
+}
+
+.wifi-status strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto;
+  gap: 12px;
+  align-items: end;
+}
+
+input,
+button {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 6px;
+  border: 1px solid #444;
+  background: #181818;
+  color: #eee;
+  font: inherit;
+}
+
+button {
+  min-width: 120px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+#wifiMessage {
+  min-width: 80px;
+  color: #aaa;
+}
+
+@media (max-width: 640px) {
+  .target,
+  .wifi-status,
+  form {
+    grid-template-columns: 1fr;
+  }
+}
