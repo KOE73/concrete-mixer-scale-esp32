@@ -66,7 +66,9 @@ inline constexpr DisplayDriver kDisplayDriver = DisplayDriver::Hub75;
 inline constexpr int kHub75Width = 64;
 inline constexpr int kHub75Height = 64;
 inline constexpr int kHub75ChainLength = 1;
+inline constexpr uint8_t kHub75ColorDepthBits = 3;
 inline constexpr uint8_t kHub75Brightness = 96;
+inline constexpr uint32_t kHub75StartupAnimationMs = 1000;
 
 // Пины Matrix Portal S3 для HUB75 из документации ESP32-HUB75-MatrixPanel-DMA,
 // которая ссылается на Adafruit Protomatter mapping для этой платы.

@@ -4,6 +4,7 @@
 
 #include "esp_err.h"
 
+#include <cstdint>
 #include <memory>
 
 namespace mixer::display {
@@ -16,6 +17,7 @@ struct DisplayFrame {
     float target_weight = 0.0f;
     float remaining_weight = 0.0f;
     float remaining_shovels = 0.0f;
+    uint32_t diagnostic_tick = 0;
     bool valid = false;
 };
 

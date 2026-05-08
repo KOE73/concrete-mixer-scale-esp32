@@ -58,6 +58,8 @@ void DisplayTask::taskEntry(void* context) {
 }
 
 void DisplayTask::run() {
+    uint32_t diagnostic_tick = 0;
+
     while (true) {
         const domain::WeightState state = latest_.get();
         const domain::FilterOutput primary =
@@ -72,6 +74,7 @@ void DisplayTask::run() {
             config::kDefaultShovelWeight > 0.0f
                 ? frame.remaining_weight / config::kDefaultShovelWeight
                 : 0.0f;
+        frame.diagnostic_tick = diagnostic_tick++;
         frame.valid = primary.valid;
 
         sink_.render(frame);

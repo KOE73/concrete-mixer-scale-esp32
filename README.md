@@ -46,7 +46,18 @@ Edit:
 pio run -e matrix-portal-s3
 ```
 
-The build creates and flashes the SPIFFS image for the `www` partition through:
+## Upload
+
+```powershell
+pio run -e matrix-portal-s3 -t upload
+```
+
+The normal PlatformIO upload also uploads the SPIFFS image for the `www`
+partition. `platformio.ini` maps PlatformIO's filesystem data directory to
+`www/`, and `scripts/upload_www_after_firmware.py` runs the standard `uploadfs`
+target after firmware upload.
+
+ESP-IDF builds the same SPIFFS image through:
 
 ```cmake
 spiffs_create_partition_image(www ../www FLASH_IN_PROJECT)
