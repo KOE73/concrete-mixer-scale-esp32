@@ -145,6 +145,8 @@ esp_err_t WebServer::sendWeight(httpd_req_t* req) const {
     cJSON_AddBoolToObject(root, "valid", state.sample.valid);
     cJSON_AddNumberToObject(root, "total", state.sample.total);
     cJSON_AddNumberToObject(root, "weight", state.sample.weight);
+    cJSON_AddBoolToObject(root, "diagnosticPartialRead",
+                          config::kHx711ReadReadySubsetForDiagnostics);
 
     cJSON* target = cJSON_AddObjectToObject(root, "target");
     cJSON_AddStringToObject(target, "stage", config::kDefaultBatchStageName);
@@ -164,6 +166,8 @@ esp_err_t WebServer::sendWeight(httpd_req_t* req) const {
         cJSON* channel = cJSON_CreateObject();
         cJSON_AddNumberToObject(channel, "index", static_cast<double>(i));
         cJSON_AddStringToObject(channel, "name", config::kLoadCells[i].name);
+        cJSON_AddBoolToObject(channel, "active", config::kLoadCells[i].enabled);
+        cJSON_AddBoolToObject(channel, "ready", state.sample.ready[i]);
         cJSON_AddNumberToObject(channel, "raw", state.sample.raw[i]);
         cJSON_AddNumberToObject(channel, "weight", state.sample.channels[i]);
         cJSON_AddItemToArray(channels, channel);

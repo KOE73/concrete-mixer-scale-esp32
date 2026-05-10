@@ -25,6 +25,7 @@ struct WeightSample {
     int64_t timestamp_us = 0;
     std::array<int32_t, config::kLoadCellCount> raw{};
     std::array<float, config::kLoadCellCount> channels{};
+    std::array<bool, config::kLoadCellCount> ready{};
     float total = 0.0f;
     float weight = 0.0f;
     bool valid = false;

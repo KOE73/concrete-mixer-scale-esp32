@@ -1,4 +1,4 @@
-# Инструкции для Codex
+# Инструкции для Агентов
 
 - Проект ориентирован на ESP32-S3, PlatformIO и ESP-IDF.
 - Документация платы Matrix Portal S3 лежит в `docs/adafruit-matrixportal-s3.pdf`; сверяй с ней пины, питание, USB и особенности платы.
@@ -10,3 +10,9 @@
 - Для HUB75 как базовый кандидат используй `ESP32-HUB75-MatrixPanel-DMA`; подключай его за реализацией `display::IDisplaySink`, не смешивая код матрицы с измерением веса.
 - Для HX711 есть выбираемый драйвер в `include/config/hardware_config.hpp`: обычный `esp-idf-lib/hx711` и низкоуровневый `SharedClockBus` для общего SCK. Если включаешь `SharedClockBus`, все активные HX711 должны иметь один `sck_pin` и один `gain`.
 - Web-модуль не должен напрямую читать HX711. Он должен брать последнее обработанное состояние из общего хранилища.
+
+- Use 4 spaces for indentation in source code files. Do not use tab characters for indentation.
+
+# Коментарии
+- Пиши на русском языке
+- Пиши о сути и причинах в первую очередь, а не о очевидных фактах.

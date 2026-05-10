@@ -29,6 +29,16 @@ bool LoadCellReader::isReady(std::size_t index) const {
     }
 }
 
+bool LoadCellReader::anyReady() const {
+    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
+        if (isReady(i)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool LoadCellReader::waitAllReady(uint32_t timeout_ms) const {
     if constexpr (config::kHx711ReadDriver == config::Hx711ReadDriver::SharedClockBus) {
         return shared_bus_.waitAllReady(timeout_ms);

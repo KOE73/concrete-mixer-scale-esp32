@@ -19,6 +19,7 @@ class LoadCellReader {
 public:
     esp_err_t initialize();
     bool isReady(std::size_t index) const;
+    bool anyReady() const;
     bool waitAllReady(uint32_t timeout_ms) const;
     esp_err_t readRaw(std::array<int32_t, config::kLoadCellCount>& values) const;
     bool isActive(std::size_t index) const;

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mixer Process</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main>
+    <h1>Mixer Process</h1>
+    <nav class="top-nav">
+      <a href="/">Main</a>
+    </nav>
+
+    <section class="process-summary">
+      <div>
+        <span>Stage</span>
+        <strong id="stage">--</strong>
+      </div>
+      <div>
+        <span>Current</span>
+        <strong id="weight">--</strong>
+      </div>
+      <div>
+        <span>Target</span>
+        <strong id="target">--</strong>
+      </div>
+      <div>
+        <span>Remaining</span>
+        <strong id="remaining">--</strong>
+      </div>
+      <div>
+        <span>Shovels</span>
+        <strong id="shovels">--</strong>
+      </div>
+      <div>
+        <span>Sample</span>
+        <strong id="sample">--</strong>
+      </div>
+    </section>
+
+    <section class="chart-panel">
+      <h2>Live weight</h2>
+      <canvas id="weightChart" width="640" height="180"></canvas>
+    </section>
+
+    <section class="mixer-map">
+      <h2>Load cells</h2>
+      <svg viewBox="0 0 640 260" role="img" aria-label="Load cell placement on mixer">
+        <polygon points="116,130 478,54 478,206" fill="none" stroke="#555" stroke-width="5"/>
+        <text x="78" y="34" class="svg-heading">Front: support and handle side</text>
+        <text x="424" y="34" class="svg-heading">Rear: wheels</text>
+
+        <g class="load-cell-box">
+          <rect x="360" y="18" width="190" height="62" rx="6"/>
+          <text x="378" y="43">A1 rear_left</text>
+          <text x="378" y="66" id="svg-rear-left">--</text>
+        </g>
+        <g class="load-cell-box">
+          <rect x="360" y="180" width="190" height="62" rx="6"/>
+          <text x="378" y="205">A2 rear_right</text>
+          <text x="378" y="228" id="svg-rear-right">--</text>
+        </g>
+        <g class="load-cell-box">
+          <rect x="24" y="99" width="190" height="62" rx="6"/>
+          <text x="42" y="124">A3 front_support</text>
+          <text x="42" y="147" id="svg-front-support">--</text>
+        </g>
+      </svg>
+    </section>
+
+    <section class="calibration-panel">
+      <div class="section-title-row">
+        <h2>Calibration</h2>
+        <button id="zeroOffset" type="button" title="Use current raw values as zero offsets">⟲0 Zero offset</button>
+      </div>
+      <div class="calibration-grid" id="calibration"></div>
+      <div class="calibration-actions">
+        <label>Global scale
+          <input id="globalScale" type="number" step="0.000001" value="1">
+        </label>
+        <button id="saveCalibration" type="button">Save scales</button>
+        <span id="calibrationMessage"></span>
+      </div>
+    </section>
+
+    <section class="process-grid">
+      <div>
+        <h2>Channels</h2>
+        <table>
+          <thead>
+            <tr><th>Channel</th><th>Ready</th><th>Raw</th><th>ADC</th><th>Weight</th></tr>
+          </thead>
+          <tbody id="channels"></tbody>
+        </table>
+      </div>
+      <div>
+        <h2>Filters</h2>
+        <table>
+          <thead>
+            <tr><th>Filter</th><th>Valid</th><th>Weight</th></tr>
+          </thead>
+          <tbody id="filters"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="/process.js"></script>
+</body>
+</html>

@@ -1,8 +1,12 @@
+# Display widgets and sinks are small and change together during UI diagnostics.
+# Keep this directory globbed so adding a display-only .cpp does not require
+# a CMake edit every time.
+file(GLOB DISPLAY_SRCS "display/*.cpp")
+
 idf_component_register(
     SRCS
         "main.cpp"
-        "display/display.cpp"
-        "display/hub75_display.cpp"
+        ${DISPLAY_SRCS}
         "measurement/load_cell_reader.cpp"
         "measurement/load_cell_sampler.cpp"
         "platform/hx711_bus.cpp"

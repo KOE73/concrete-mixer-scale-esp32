@@ -2,13 +2,16 @@
 
 #include "config/hardware_config.hpp"
 
+#include "display/spinner.hpp"
+#include "display/linear_indicator.hpp"
+
 #include "ESP32-HUB75-MatrixPanel-I2S-DMA.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
 
-#include <algorithm>
-#include <cmath>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -18,13 +21,18 @@ namespace mixer::display
     {
 
         constexpr char kTag[] = "hub75_display";
-        constexpr int64_t kDiagnosticLogPeriodUs = 1000000;
 
-        uint8_t clampByte(float value)
-        {
-            return static_cast<uint8_t>(std::clamp(value, 0.0f, 255.0f));
-        }
-
+#pragma region Вспомогательные утилиты
+        /**
+         * @brief Генерирует радужный спектр (RGB) на основе фазового сдвига.
+         * Используется для циклического изменения цвета анимации.
+         * Время использования: Во время показа стартовой анимации.
+         *
+         * @param phase Текущая фаза/сдвиг (0-255).
+         * @param red Ссылка для записи компоненты красного цвета.
+         * @param green Ссылка для записи компоненты зеленого цвета.
+         * @param blue Ссылка для записи компоненты синего цвета.
+         */
         void rainbowColor(uint8_t phase, uint8_t &red, uint8_t &green, uint8_t &blue)
         {
             if (phase < 85)
@@ -49,12 +57,31 @@ namespace mixer::display
             green = 0;
             blue = static_cast<uint8_t>(255 - phase * 3);
         }
+#pragma endregion
 
     } // анонимное пространство имен
 
     class Hub75DisplaySink::Impl
     {
     public:
+        Impl()
+        {
+            // Настраиваем спиннер (стиль радара, 1 оборот в секунду, хвост 180 градусов)
+            diagnostic_spinner_.setRadarStyle();
+            diagnostic_spinner_.setSpeedRpm(config::kHub75SpinnerSpeedRpm);
+            diagnostic_spinner_.setTrailLength(180.0f);
+            configureIndicators();
+        }
+
+#pragma region Инициализация и запуск
+        /**
+         * @brief Выполняет первоначальную настройку и запуск матрицы HUB75.
+         * Конфигурирует пины GPIO, скорость шины I2S, двойную буферизацию, глубину цвета и яркость.
+         * Устанавливает таймер окончания стартовой анимации.
+         * Время использования: Однократно при старте приложения (вызывается из Hub75DisplaySink::begin).
+         *
+         * @return ESP_OK в случае успешного старта, ESP_FAIL — при ошибке инициализации DMA-панели.
+         */
         esp_err_t begin()
         {
             HUB75_I2S_CFG::i2s_pins pins = {
@@ -81,9 +108,11 @@ namespace mixer::display
                 pins                       // gpio: структура с пинами подключения
             );
             matrix_config.double_buff = false;                                  // double_buff: двойная буферизация (выключена для экономии SRAM)
-            matrix_config.driver = HUB75_I2S_CFG::shift_driver::SHIFTREG;       // driver: тип чипа сдвигового регистра (стандартный SHIFT)
+            // SM16238S-панели требуют стартовой записи регистров, как FM6126A/ICN2038S.
+            // Без нее часть экрана может стартовать с другой яркостью после включения.
+            matrix_config.driver = HUB75_I2S_CFG::shift_driver::ICN2038S;
             matrix_config.clkphase = true;                                      // clkphase: фаза тактового сигнала (clock phase)
-            matrix_config.i2sspeed = HUB75_I2S_CFG::clk_speed::HZ_20M;          //HZ_20M i2sspeed: скорость шины I2S (по умолчанию 20 МГц)
+            matrix_config.i2sspeed = HUB75_I2S_CFG::clk_speed::HZ_20M;          // HZ_20M i2sspeed: скорость шины I2S (по умолчанию 20 МГц)
             matrix_config.latch_blanking = 4;                                   // latch_blanking: время гашения латча (latch blanking)
             matrix_config.setPixelColorDepthBits(config::kHub75ColorDepthBits); // Глубина цвета (3 бита)
 
@@ -104,7 +133,7 @@ namespace mixer::display
 #if defined(CONFIG_SPIRAM)
             ESP_LOGI(kTag, "PSRAM is enabled for non-HUB75 allocations");
 #endif
-            ESP_LOGI(kTag, "HUB75 started: %dx%d chain=%d color_depth=%u brightness=%u",
+            ESP_LOGI(kTag, "HUB75 started: %dx%d chain=%d color_depth=%u brightness=%u driver=ICN2038S",
                      config::kHub75Width,
                      config::kHub75Height,
                      config::kHub75ChainLength,
@@ -114,47 +143,40 @@ namespace mixer::display
                 esp_timer_get_time() + static_cast<int64_t>(config::kHub75StartupAnimationMs) * 1000;
             return ESP_OK;
         }
+#pragma endregion
 
+#pragma region Основной цикл отрисовки
+        /**
+         * @brief Основной метод отрисовки кадра на матрице.
+         * Очищает экран, управляет логикой переключения между стартовой анимацией и основным интерфейсом
+         * весов (статус-бар, диагностический паттерн, спиннер активности), логирует состояние в консоль.
+         * Время использования: Постоянно в цикле отрисовки дисплея (вызывается из Hub75DisplaySink::render).
+         *
+         * @param frame Текущий кадр данных весов для отображения.
+         */
         void render(const DisplayFrame &frame)
         {
             if (matrix_ == nullptr)
-            {
                 return;
-            }
 
             matrix_->fillScreenRGB888(0, 0, 0);
             if (renderStartupAnimation(frame.diagnostic_tick))
-            {
-                drawDiagnosticSpinner(frame.diagnostic_tick);
-                logDiagnosticRender(frame);
                 return;
-            }
 
-            drawDiagnosticPattern();
-            if (!frame.valid || frame.target_weight <= 0.0f)
-            {
-                drawStatusFrame(24, 24, 24, 0.0f);
-                drawDiagnosticSpinner(frame.diagnostic_tick);
-                logDiagnosticRender(frame);
-                return;
-            }
-
-            const float progress = std::clamp(frame.weight / frame.target_weight, 0.0f, 1.0f);
-            const bool overfilled = frame.remaining_weight < 0.0f;
-            if (overfilled)
-            {
-                drawStatusFrame(180, 24, 24, progress);
-            }
-            else
-            {
-                drawStatusFrame(24, 150, 80, progress);
-            }
-
-            drawDiagnosticSpinner(frame.diagnostic_tick);
-            logDiagnosticRender(frame);
+            drawChannelIndicators(frame);
+            drawSpinner();
         }
+#pragma endregion
 
     private:
+#pragma region Отрисовка графических элементов (Запуск / Инициализация)
+        /**
+         * @brief Отрисовывает стартовую переливающуюся анимацию "радуги" по диагонали экрана.
+         * Время использования: Первые несколько секунд после включения (время задается в config::kHub75StartupAnimationMs).
+         *
+         * @param tick Счётчик циклов/тактов для анимации.
+         * @return true, если анимация всё ещё проигрывается; false, если время анимации истекло.
+         */
         bool renderStartupAnimation(uint32_t tick)
         {
             if (esp_timer_get_time() >= startup_animation_until_us_)
@@ -193,134 +215,181 @@ namespace mixer::display
 
             return true;
         }
+#pragma endregion
 
-        void drawDiagnosticPattern()
+#pragma region Отрисовка графических элементов (Активная работа)
+
+        /**
+         * @brief Отрисовывает вращающийся диагностический индикатор активности (спиннер).
+         * Перенаправляет вызов инкапсулированному объекту Spinner.
+         * Время использования: Постоянно во время работы (при взвешивании).
+         */
+        void drawSpinner()
         {
-            constexpr int block = 10;
-
-            matrix_->fillRect(0, 0, block, block, 220, 0, 0);
-            matrix_->fillRect(config::kHub75Width - block, 0, block, block, 0, 220, 0);
-            matrix_->fillRect(0, config::kHub75Height - block, block, block, 0, 0, 220);
-            matrix_->fillRect(config::kHub75Width - block,
-                              config::kHub75Height - block,
-                              block,
-                              block,
-                              220,
-                              220,
-                              220);
-
-            for (int i = 0; i < config::kHub75Width && i < config::kHub75Height; i += 2)
-            {
-                matrix_->drawPixelRGB888(i, i, 180, 180, 0);
-            }
+            diagnostic_spinner_.draw([this](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+                matrix_->drawPixelRGB888(x, y, r, g, b);
+            });
         }
 
-        void drawDiagnosticSpinner(uint32_t tick)
+        void configureIndicators()
         {
-            constexpr int origin_x = 1;
-            constexpr int origin_y = 1;
-            constexpr int center_x = origin_x + 4;
-            constexpr int center_y = origin_y + 4;
-            constexpr uint8_t dim = 20;
-            constexpr uint8_t bright = 220;
-            static constexpr int points[8][2] = {
-                {4, 0},
-                {7, 1},
-                {8, 4},
-                {7, 7},
-                {4, 8},
-                {1, 7},
-                {0, 4},
-                {1, 1},
+            // Пока рецептов и распределения веса по опорам нет, каждому датчику
+            // даем одинаковую условную цель: общий целевой вес делится на число
+            // каналов. Это не бизнес-логика дозирования, а только стартовая шкала
+            // для визуального сравнения трех опор на HUB75.
+            constexpr float per_channel_target = config::kDefaultBatchTargetWeight /
+                                                 static_cast<float>(config::kLoadCellCount);
+
+            // A1 / rear_left: базовый контрольный вариант. Одна синяя заливка и
+            // белая уставка показывают самый простой режим без цветовых зон.
+            rear_left_indicator_.setValueRange(0.0f, per_channel_target * 1.5f);
+            rear_left_indicator_.setFrame(true, {28, 28, 28});
+            rear_left_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
+            rear_left_indicator_.setColor({45, 120, 230});
+            rear_left_indicator_.addSetpoint(per_channel_target, {230, 230, 230});
+
+            // A2 / rear_right: сегментный вариант. Синий, зеленый и оранжевый
+            // диапазоны одновременно живут на одной общей шкале. Зеленая зона
+            // специально шире, чтобы "допуск" занимал больше пикселей и был
+            // заметнее на матрице 64x64.
+            rear_right_indicator_.setValueRange(0.0f, per_channel_target * 1.5f);
+            rear_right_indicator_.setFrame(true, {40, 40, 40});
+            rear_right_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::IncludeFrame);
+            rear_right_indicator_.addRange(0.0f, per_channel_target * 0.45f, {35, 90, 220});
+            rear_right_indicator_.addRange(per_channel_target * 0.45f,
+                                           per_channel_target * 1.15f,
+                                           {40, 180, 80});
+            rear_right_indicator_.addRange(per_channel_target * 1.15f,
+                                           per_channel_target * 1.5f,
+                                           {230, 120, 20});
+            rear_right_indicator_.addSetpoint(per_channel_target, {255, 255, 255});
+
+            // A3 / front_support: слойный вариант. Каждый следующий диапазон
+            // снова заполняет всю ширину шкалы от нуля и перекрывает предыдущий
+            // цвет. Так активный диапазон получает максимум пикселей, а уставки
+            // появляются только после входа значения в соответствующую область.
+            // color1 - активный цвет текущего слоя, color2 - приглушенный цвет
+            // уже пройденного слоя. Сжатие по высоте оставляет историю диапазона
+            // видимой, но освобождает визуальный вес для текущего слоя.
+            front_support_indicator_.setValueRange(0.0f, per_channel_target * 1.5f);
+            front_support_indicator_.setFrame(true, {28, 28, 28});
+            front_support_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
+            front_support_indicator_.setCompressInactiveRanges(true);
+            front_support_indicator_.addRange(0.0f,
+                                              per_channel_target * 0.35f,
+                                              {0, 0, 255},
+                                              {0,0, 70});
+            front_support_indicator_.addRange(per_channel_target * 0.35f,
+                                              per_channel_target * 1.2f,
+                                              {0, 255, 0},
+                                              {0, 70, 0});
+            front_support_indicator_.addRange(per_channel_target * 1.2f,
+                                              per_channel_target * 1.5f,
+                                              {255, 255, 0},
+                                              {255, 255, 0});
+            front_support_indicator_.addSetpoint(per_channel_target * 0.8f, {255, 255, 0});
+            front_support_indicator_.addSetpoint(per_channel_target, {255, 255, 255});
+            front_support_indicator_.addSetpoint(per_channel_target * 1.2f, {255, 255, 0});
+
+            // Отдельная вертикальная шкала нужна как проверка того, что общий
+            // виджет умеет работать не только слева направо, но и снизу вверх.
+            // Она показывает общий вес тем же overlay-принципом, а место под нее
+            // освобождено вместо старых боковых квадратиков готовности каналов.
+            total_vertical_indicator_.setValueRange(0.0f, config::kDefaultBatchTargetWeight * 1.5f);
+            total_vertical_indicator_.setFrame(true, {28, 28, 28});
+            total_vertical_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
+            total_vertical_indicator_.setDirection(LinearIndicatorBase::Direction::Vertical);
+            total_vertical_indicator_.setCompressInactiveRanges(true);
+            total_vertical_indicator_.addRange(0.0f,
+                                               config::kDefaultBatchTargetWeight * 0.35f,
+                                               {0, 0, 255},
+                                               {0, 0, 70});
+            total_vertical_indicator_.addRange(config::kDefaultBatchTargetWeight * 0.35f,
+                                               config::kDefaultBatchTargetWeight * 1.2f,
+                                               {0, 255, 0},
+                                               {0, 70, 0});
+            total_vertical_indicator_.addRange(config::kDefaultBatchTargetWeight * 1.2f,
+                                               config::kDefaultBatchTargetWeight * 1.5f,
+                                               {255, 255, 0},
+                                               {255, 255, 0});
+            total_vertical_indicator_.addSetpoint(config::kDefaultBatchTargetWeight, {255, 255, 255});
+        }
+
+        void drawChannelIndicators(const DisplayFrame &frame)
+        {
+            const std::array<LinearIndicatorBase*, config::kLoadCellCount> indicators{
+                &rear_left_indicator_,
+                &rear_right_indicator_,
+                &front_support_indicator_,
             };
 
-            matrix_->fillRect(origin_x, origin_y, 9, 9, 0, 0, 0);
-            for (std::size_t i = 0; i < 8; ++i)
+            total_vertical_indicator_.draw(
+                frame.valid ? frame.weight : 0.0f,
+                [this](int x, int y, int width, int height, LinearIndicatorBase::Color color) {
+                    matrix_->fillRect(x, y, width, height, color.r, color.g, color.b);
+                },
+                [this](int x, int y, LinearIndicatorBase::Color color) {
+                    matrix_->drawPixelRGB888(x, y, color.r, color.g, color.b);
+                });
+
+            for (std::size_t i = 0; i < config::kLoadCellCount; ++i)
             {
-                const bool active = i == tick % 8;
-                const uint8_t value = active ? bright : dim;
-                drawSpinnerLine(center_x,
-                                center_y,
-                                origin_x + points[i][0],
-                                origin_y + points[i][1],
-                                value,
-                                value,
-                                active ? 40 : dim);
+                indicators[i]->draw(
+                    frame.valid ? frame.channel_weights[i] : 0.0f,
+                    [this](int x, int y, int width, int height, LinearIndicatorBase::Color color) {
+                        matrix_->fillRect(x, y, width, height, color.r, color.g, color.b);
+                    },
+                    [this](int x, int y, LinearIndicatorBase::Color color) {
+                        matrix_->drawPixelRGB888(x, y, color.r, color.g, color.b);
+                    });
             }
         }
-
-        void drawSpinnerLine(int x0, int y0, int x1, int y1, uint8_t red, uint8_t green, uint8_t blue)
-        {
-            const int dx = x1 - x0;
-            const int dy = y1 - y0;
-            const int steps = std::max(std::abs(dx), std::abs(dy));
-            for (int step = 0; step <= steps; ++step)
-            {
-                const int x = x0 + dx * step / steps;
-                const int y = y0 + dy * step / steps;
-                matrix_->drawPixelRGB888(x, y, red, green, blue);
-            }
-        }
-
-        void logDiagnosticRender(const DisplayFrame &frame)
-        {
-            const int64_t now = esp_timer_get_time();
-            if (now - last_diagnostic_log_us_ < kDiagnosticLogPeriodUs)
-            {
-                return;
-            }
-
-            last_diagnostic_log_us_ = now;
-            ESP_LOGI(kTag, "render tick=%u valid=%d weight=%.2f remaining=%.2f",
-                     static_cast<unsigned>(frame.diagnostic_tick),
-                     frame.valid ? 1 : 0,
-                     static_cast<double>(frame.weight),
-                     static_cast<double>(frame.remaining_weight));
-        }
-
-        void drawStatusFrame(uint8_t red, uint8_t green, uint8_t blue, float progress)
-        {
-            constexpr int margin = 4;
-            constexpr int bar_x = 8;
-            constexpr int bar_y = 24;
-            constexpr int bar_width = config::kHub75Width - 16;
-            constexpr int bar_height = 16;
-
-            matrix_->fillRect(margin, margin, config::kHub75Width - margin * 2, 2, 40, 40, 40);
-            matrix_->fillRect(margin, config::kHub75Height - margin - 2,
-                              config::kHub75Width - margin * 2, 2, 40, 40, 40);
-            matrix_->fillRect(margin, margin, 2, config::kHub75Height - margin * 2, 40, 40, 40);
-            matrix_->fillRect(config::kHub75Width - margin - 2, margin, 2,
-                              config::kHub75Height - margin * 2, 40, 40, 40);
-
-            matrix_->fillRect(bar_x, bar_y, bar_width, bar_height, 12, 12, 12);
-            const int filled = static_cast<int>(std::round(progress * static_cast<float>(bar_width)));
-            if (filled > 0)
-            {
-                matrix_->fillRect(bar_x, bar_y, filled, bar_height, red, green, blue);
-            }
-
-            const uint8_t glow = clampByte(40.0f + progress * 180.0f);
-            matrix_->fillRect(12, 48, 40, 6, glow, glow, 20);
-        }
+#pragma endregion
 
         std::unique_ptr<MatrixPanel_I2S_DMA> matrix_{};
-        int64_t last_diagnostic_log_us_ = 0;
         int64_t startup_animation_until_us_ = 0;
+        
+        Spinner diagnostic_spinner_{1, 1, 9, 9};
+        SolidLinearIndicator rear_left_indicator_{14, 12, 48, 10};
+        SegmentedLinearIndicator rear_right_indicator_{14, 28, 48, 10};
+        OverlayLinearIndicator front_support_indicator_{14, 44, 48, 10};
+        OverlayLinearIndicator total_vertical_indicator_{4, 12, 6, 42};
     };
 
+#pragma region Внешний интерфейс Hub75DisplaySink
+    /**
+     * @brief Конструктор класса Hub75DisplaySink. Создает внутреннюю реализацию (Pimpl).
+     * Время использования: Однократно при создании экземпляра класса.
+     */
     Hub75DisplaySink::Hub75DisplaySink() : impl_(std::make_unique<Impl>()) {}
 
+    /**
+     * @brief Деструктор класса Hub75DisplaySink. Освобождает внутреннюю реализацию.
+     * Время использования: Однократно при уничтожении экземпляра класса.
+     */
     Hub75DisplaySink::~Hub75DisplaySink() = default;
 
+    /**
+     * @brief Выполняет инициализацию дисплея через внутреннюю реализацию.
+     * Время использования: Однократно при запуске системы.
+     *
+     * @return ESP_OK в случае успеха, ESP_FAIL — при ошибке.
+     */
     esp_err_t Hub75DisplaySink::begin()
     {
         return impl_->begin();
     }
 
+    /**
+     * @brief Выполняет отрисовку кадра через внутреннюю реализацию.
+     * Время использования: Постоянно в цикле вывода индикации.
+     *
+     * @param frame Структура кадра данных для отрисовки.
+     */
     void Hub75DisplaySink::render(const DisplayFrame &frame)
     {
         impl_->render(frame);
     }
+#pragma endregion
 
 } // пространство имен mixer::display
