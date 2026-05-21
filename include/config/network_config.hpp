@@ -36,4 +36,10 @@ inline constexpr uint8_t kApMaxConnections = 4;
 inline constexpr const char* kDefaultStaSsid = secrets::kStaSsid;
 inline constexpr const char* kDefaultStaPassword = secrets::kStaPassword;
 
+inline constexpr uint32_t kDefaultScaleId = 1;
+inline constexpr char kDefaultUdpTelemetryTargetHost[] = "255.255.255.255";
+inline constexpr uint16_t kDefaultUdpTelemetryPort = 4222;
+inline constexpr bool kDefaultUdpTelemetryEnabled = true;
+inline constexpr uint32_t kUdpTelemetryTaskStackBytes = 4096;
+
 }  // пространство имен mixer::config

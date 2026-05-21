@@ -1,4 +1,10 @@
-const history = [];
+const histories = {
+  raw: [],
+  ma_1s: [],
+  ma_3s: [],
+  ma_5s: [],
+  ma_10s: []
+};
 const channelHistory = new Map();
 const maxHistory = 90;
 let latestWeightData = null;
@@ -9,7 +15,7 @@ function formatNumber(value, digits = 2) {
 }
 
 function primaryFilter(data) {
-  return data.filters.find((item) => item.name === 'moving_average') || data.filters[0] || null;
+  return data.filters.find((item) => item.name === 'ma_3s') || data.filters.find((item) => item.name === 'moving_average') || data.filters[0] || null;
 }
 
 function svgIdForChannel(name) {
@@ -82,36 +88,77 @@ function drawChart(targetWeight) {
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, width, height);
 
-  const maxValue = Math.max(targetWeight || 0, ...history, 1);
-  const minValue = Math.min(0, ...history);
+  const allValues = [targetWeight || 0];
+  Object.values(histories).forEach((history) => {
+    history.forEach((val) => {
+      if (Number.isFinite(val)) {
+        allValues.push(val);
+      }
+    });
+  });
+
+  const maxValue = Math.max(...allValues, 1);
+  const minValue = Math.min(0, ...allValues);
   const range = Math.max(maxValue - minValue, 1);
 
   if (targetWeight > 0) {
     const y = height - ((targetWeight - minValue) / range) * height;
-    ctx.strokeStyle = '#555';
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
     ctx.stroke();
   }
 
-  if (history.length < 2) {
-    return;
-  }
+  const configs = [
+    { key: 'raw', color: '#666', label: 'Raw', width: 1.5 },
+    { key: 'ma_1s', color: '#36a2eb', label: 'MA 1s', width: 2 },
+    { key: 'ma_3s', color: '#ff6384', label: 'MA 3s', width: 2 },
+    { key: 'ma_5s', color: '#ff9f40', label: 'MA 5s', width: 2 },
+    { key: 'ma_10s', color: '#4bc0c0', label: 'MA 10s', width: 2 }
+  ];
 
-  ctx.strokeStyle = '#4dd38a';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  history.forEach((value, index) => {
-    const x = (index / (maxHistory - 1)) * width;
-    const y = height - ((value - minValue) / range) * height;
-    if (index === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
+  configs.forEach((cfg) => {
+    const history = histories[cfg.key];
+    if (history.length < 2) {
+      return;
     }
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = cfg.width;
+    ctx.beginPath();
+    let first = true;
+    history.forEach((value, index) => {
+      if (value === null || !Number.isFinite(value)) {
+        return;
+      }
+      const x = (index / (maxHistory - 1)) * width;
+      const y = height - ((value - minValue) / range) * height;
+      if (first) {
+        ctx.moveTo(x, y);
+        first = false;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
   });
-  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(5, 5, 95, configs.length * 15 + 5);
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(5, 5, 95, configs.length * 15 + 5);
+
+  ctx.font = '10px sans-serif';
+  ctx.textBaseline = 'middle';
+  configs.forEach((cfg, idx) => {
+    const y = 15 + idx * 15;
+    ctx.fillStyle = cfg.color;
+    ctx.fillRect(10, y - 4, 12, 8);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(cfg.label, 28, y);
+  });
 }
 
 async function updateProcess() {
@@ -119,14 +166,22 @@ async function updateProcess() {
   const data = await response.json();
   latestWeightData = data;
   const primary = primaryFilter(data);
-  const weight = primary && primary.valid ? primary.weight : data.weight;
+  const weight = primary && primary.valid ? primary.weight : (data.valid ? data.weight : null);
 
-  if (Number.isFinite(weight)) {
-    history.push(weight);
-    while (history.length > maxHistory) {
-      history.shift();
-    }
+  const rawWeight = data.valid ? data.weight : null;
+  histories.raw.push(rawWeight);
+  while (histories.raw.length > maxHistory) {
+    histories.raw.shift();
   }
+
+  ['ma_1s', 'ma_3s', 'ma_5s', 'ma_10s'].forEach((key) => {
+    const filter = data.filters.find((f) => f.name === key);
+    const val = filter && filter.valid ? filter.weight : null;
+    histories[key].push(val);
+    while (histories[key].length > maxHistory) {
+      histories[key].shift();
+    }
+  });
 
   document.getElementById('stage').textContent = data.target.stage;
   document.getElementById('weight').textContent = formatNumber(weight);

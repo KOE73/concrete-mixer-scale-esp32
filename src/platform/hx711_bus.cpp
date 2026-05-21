@@ -76,12 +76,21 @@ bool Hx711Bus::waitAllReady(uint32_t timeout_ms) const {
     return false;
 }
 
+namespace {
+
+portMUX_TYPE rxtx_mux = portMUX_INITIALIZER_UNLOCKED;
+
+} // namespace
+
 esp_err_t Hx711Bus::readRaw(std::array<int32_t, config::kLoadCellCount>& values) const {
     if (!initialized_) {
         return ESP_ERR_INVALID_STATE;
     }
 
     std::array<uint32_t, config::kLoadCellCount> unsigned_values{};
+
+    portENTER_CRITICAL(&rxtx_mux);
+
     for (int bit = 0; bit < 24; ++bit) {
         gpio_set_level(sck_pin_, 1);
         esp_rom_delay_us(1);
@@ -101,6 +110,7 @@ esp_err_t Hx711Bus::readRaw(std::array<int32_t, config::kLoadCellCount>& values)
 
     const int pulses = gainPulseCount(gain_);
     if (pulses <= 0) {
+        portEXIT_CRITICAL(&rxtx_mux);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -110,6 +120,8 @@ esp_err_t Hx711Bus::readRaw(std::array<int32_t, config::kLoadCellCount>& values)
         gpio_set_level(sck_pin_, 0);
         esp_rom_delay_us(1);
     }
+
+    portEXIT_CRITICAL(&rxtx_mux);
 
     for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
         if (!active_[i]) {

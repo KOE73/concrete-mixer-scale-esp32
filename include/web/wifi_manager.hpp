@@ -16,6 +16,8 @@ struct WifiStatus {
     char ap_ssid[33]{};
     char sta_ssid[33]{};
     char sta_ip[16]{};
+    char ap_mac[18]{};
+    char sta_mac[18]{};
 };
 
 // Владеет обоими сетевыми режимами ESP32: постоянной сервисной точкой доступа

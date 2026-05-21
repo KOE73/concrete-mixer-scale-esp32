@@ -16,11 +16,11 @@ domain::FilterOutput RawWeightFilter::apply(const domain::WeightSample& sample) 
     return {name(), sample.total, sample.weight, sample.valid};
 }
 
-MovingAverageWeightFilter::MovingAverageWeightFilter(std::size_t window)
-    : window_(std::clamp<std::size_t>(window, 1, config::kMovingAverageWindow)) {}
+MovingAverageWeightFilter::MovingAverageWeightFilter(std::size_t window, const char* name)
+    : window_(std::clamp<std::size_t>(window, 1, config::kMovingAverageWindow)), name_(name) {}
 
 const char* MovingAverageWeightFilter::name() const {
-    return "moving_average";
+    return name_;
 }
 
 void MovingAverageWeightFilter::reset() {

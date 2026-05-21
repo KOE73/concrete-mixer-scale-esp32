@@ -15,6 +15,7 @@ idf_component_register(
         "processing/weight_processor.cpp"
         "settings/settings_store.cpp"
         "storage/web_assets.cpp"
+        "telemetry/udp_telemetry.cpp"
         "web/web_server.cpp"
         "web/wifi_manager.cpp"
     INCLUDE_DIRS

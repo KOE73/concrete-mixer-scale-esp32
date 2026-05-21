@@ -26,8 +26,32 @@ weight = total * global_scale;
   - `GET /api/weight` - current raw/filtered values
   - `GET /api/settings` - current calibration
   - `POST /api/settings` - update calibration JSON
+  - `GET /api/udp-telemetry` - current UDP CSV output settings
+  - `POST /api/udp-telemetry` - update UDP CSV output settings
 - Static Web files live in `www/` and are packed into the `www` SPIFFS partition by CMake.
 - Runtime settings do not use that filesystem. Calibration stays in the separate `nvs` partition.
+
+## UDP CSV Telemetry
+
+Firmware sends the latest processed sample as UDP CSV. Defaults:
+
+- enabled;
+- target host `255.255.255.255`;
+- port `4222`;
+- scale id `1`.
+
+If a concrete target host is configured in the Web UI, packets are sent to that
+host. Leave the broadcast address for a local network receiver that should work
+without knowing the PC IP address.
+
+CSV row format:
+
+```csv
+scale_id,seq,ms,raw1,raw2,raw3,raw_sum,kg_sum,flags
+```
+
+The central field contract, reasons and compatibility rules are documented in
+`docs/04-udp-csv-contract.md`.
 
 ## Configure
 

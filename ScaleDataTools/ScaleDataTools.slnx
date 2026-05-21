@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ScaleData.Analyzer/ScaleData.Analyzer.csproj" />
+  <Project Path="ScaleData.UdpRecorder/ScaleData.UdpRecorder.csproj" />
+</Solution>

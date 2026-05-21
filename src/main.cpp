@@ -4,6 +4,7 @@
 #include "processing/weight_processor.hpp"
 #include "settings/settings_store.hpp"
 #include "storage/web_assets.hpp"
+#include "telemetry/udp_telemetry.hpp"
 #include "web/web_server.hpp"
 #include "web/wifi_manager.hpp"
 
@@ -54,6 +55,7 @@ extern "C" void app_main() {
             ? static_cast<mixer::display::IDisplaySink&>(hub75_display_sink)
             : static_cast<mixer::display::IDisplaySink&>(log_display_sink);
     static mixer::display::DisplayTask display(latest, display_sink);
+    static mixer::telemetry::UdpTelemetryTask udp_telemetry(latest, settings);
     static mixer::storage::WebAssets web_assets;
     static mixer::web::WifiManager wifi(settings);
     static mixer::web::WebServer web(latest, settings, web_assets, wifi);
@@ -64,6 +66,7 @@ extern "C" void app_main() {
     requireOk(display.start(), "display start");
     requireOk(web_assets.mount(), "web assets mount");
     requireOk(wifi.start(), "wifi start");
+    requireOk(udp_telemetry.start(), "udp telemetry start");
     requireOk(web.start(), "web start");
 
     ESP_LOGI(kTag, "concrete mixer scale firmware started");

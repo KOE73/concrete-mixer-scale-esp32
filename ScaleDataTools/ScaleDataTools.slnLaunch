@@ -1,0 +1,17 @@
+[
+    {
+        "Name": "Recorder + Analyzer",
+        "Projects": [
+            {
+                "Path": "ScaleData.UdpRecorder\\ScaleData.UdpRecorder.csproj",
+                "Action": "Start",
+                "DebugTarget": "ScaleData.UdpRecorder"
+            },
+            {
+                "Path": "ScaleData.Analyzer\\ScaleData.Analyzer.csproj",
+                "Action": "Start",
+                "DebugTarget": "ScaleData.Analyzer"
+            }
+        ]
+    }
+]

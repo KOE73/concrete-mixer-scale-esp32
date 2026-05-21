@@ -62,6 +62,47 @@
         <span id="wifiMessage"></span>
       </form>
     </section>
+    <section class="wifi">
+      <h2>UDP CSV</h2>
+      <div class="wifi-status">
+        <div>
+          <span>Весы</span>
+          <strong id="udpScaleId">--</strong>
+        </div>
+        <div>
+          <span>Адрес</span>
+          <strong id="udpTarget">--</strong>
+        </div>
+        <div>
+          <span>Статус</span>
+          <strong id="udpEnabled">--</strong>
+        </div>
+      </div>
+      <form id="udpForm">
+        <label>
+          Scale ID
+          <input id="udpScaleIdInput" name="scaleId" type="number" min="1" step="1">
+        </label>
+        <label>
+          Адрес
+          <input id="udpTargetHost" name="targetHost" maxlength="63" autocomplete="off">
+        </label>
+        <label>
+          Порт
+          <input id="udpPort" name="port" type="number" min="1" max="65535" step="1">
+        </label>
+        <label>
+          <input id="udpEnabledInput" name="enabled" type="checkbox">
+          Включено
+        </label>
+        <button type="submit">Сохранить UDP</button>
+        <span id="udpMessage"></span>
+      </form>
+    </section>
+    <footer class="device-info">
+      <span>AP MAC <strong id="apMac">--</strong></span>
+      <span>STA MAC <strong id="staMac">--</strong></span>
+    </footer>
   </main>
   <script src="/app.js"></script>
 </body>

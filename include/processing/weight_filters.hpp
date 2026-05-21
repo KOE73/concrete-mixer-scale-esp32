@@ -33,7 +33,7 @@ public:
 // скорость реакции на стабильные значения для индикации и Web.
 class MovingAverageWeightFilter final : public IWeightFilter {
 public:
-    explicit MovingAverageWeightFilter(std::size_t window);
+    explicit MovingAverageWeightFilter(std::size_t window, const char* name = "moving_average");
 
     const char* name() const override;
     void reset() override;
@@ -43,6 +43,7 @@ private:
     std::array<float, config::kMovingAverageWindow> total_values_{};
     std::array<float, config::kMovingAverageWindow> weight_values_{};
     std::size_t window_ = config::kMovingAverageWindow;
+    const char* name_ = nullptr;
     std::size_t count_ = 0;
     std::size_t index_ = 0;
 };

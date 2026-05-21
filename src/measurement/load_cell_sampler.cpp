@@ -92,6 +92,25 @@ domain::WeightSample LoadCellSampler::readSample() {
         return sample;
     }
 
+    bool hardware_error = false;
+    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
+        if (reader_.isActive(i)) {
+            const int32_t val = sample.raw[i];
+            if (val == 8388607 || val == -8388608 || val == -1) {
+                hardware_error = true;
+                ESP_LOGW(kTag, "HX711 channel %u hardware error: raw=%ld", static_cast<unsigned>(i), static_cast<long>(val));
+            }
+        }
+    }
+
+    if (hardware_error) {
+        sample.valid = false;
+        sample.total = 0.0f;
+        sample.weight = 0.0f;
+        sample.channels.fill(0.0f);
+        return sample;
+    }
+
     sample.valid = all_ready;
     for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
         if (!reader_.isActive(i) || !sample.ready[i]) {

@@ -51,7 +51,11 @@ WebServer::WebServer(processing::LatestWeightStore& latest,
 esp_err_t WebServer::start() {
     httpd_config_t http_config = HTTPD_DEFAULT_CONFIG();
     http_config.stack_size = config::kWebServerTaskStackBytes;
+    http_config.max_open_sockets = 10;
+    http_config.backlog_conn = 8;
     http_config.lru_purge_enable = true;
+    http_config.recv_wait_timeout = 2;
+    http_config.send_wait_timeout = 2;
     http_config.uri_match_fn = httpd_uri_match_wildcard;
 
     esp_err_t err = httpd_start(&server_, &http_config);
@@ -94,6 +98,20 @@ esp_err_t WebServer::start() {
     wifi_post.user_ctx = this;
     httpd_register_uri_handler(server_, &wifi_post);
 
+    httpd_uri_t udp_get{};
+    udp_get.uri = "/api/udp-telemetry";
+    udp_get.method = HTTP_GET;
+    udp_get.handler = &WebServer::udpTelemetryGetHandler;
+    udp_get.user_ctx = this;
+    httpd_register_uri_handler(server_, &udp_get);
+
+    httpd_uri_t udp_post{};
+    udp_post.uri = "/api/udp-telemetry";
+    udp_post.method = HTTP_POST;
+    udp_post.handler = &WebServer::udpTelemetryPostHandler;
+    udp_post.user_ctx = this;
+    httpd_register_uri_handler(server_, &udp_post);
+
     httpd_uri_t static_files{};
     static_files.uri = "/*";
     static_files.method = HTTP_GET;
@@ -134,6 +152,14 @@ esp_err_t WebServer::wifiGetHandler(httpd_req_t* req) {
 
 esp_err_t WebServer::wifiPostHandler(httpd_req_t* req) {
     return static_cast<WebServer*>(req->user_ctx)->updateWifi(req);
+}
+
+esp_err_t WebServer::udpTelemetryGetHandler(httpd_req_t* req) {
+    return static_cast<WebServer*>(req->user_ctx)->sendUdpTelemetry(req);
+}
+
+esp_err_t WebServer::udpTelemetryPostHandler(httpd_req_t* req) {
+    return static_cast<WebServer*>(req->user_ctx)->updateUdpTelemetry(req);
 }
 
 esp_err_t WebServer::sendWeight(httpd_req_t* req) const {
@@ -297,12 +323,14 @@ esp_err_t WebServer::sendWifi(httpd_req_t* req) const {
     cJSON* ap = cJSON_AddObjectToObject(root, "ap");
     cJSON_AddBoolToObject(ap, "started", status.ap_started);
     cJSON_AddStringToObject(ap, "ssid", status.ap_ssid);
+    cJSON_AddStringToObject(ap, "mac", status.ap_mac);
 
     cJSON* sta = cJSON_AddObjectToObject(root, "sta");
     cJSON_AddBoolToObject(sta, "configured", credentials.configured);
     cJSON_AddBoolToObject(sta, "connected", status.sta_connected);
     cJSON_AddStringToObject(sta, "ssid", credentials.ssid);
     cJSON_AddStringToObject(sta, "ip", status.sta_ip);
+    cJSON_AddStringToObject(sta, "mac", status.sta_mac);
     cJSON_AddBoolToObject(sta, "hasPassword", credentials.password[0] != '\0');
 
     char* text = cJSON_PrintUnformatted(root);
@@ -371,6 +399,79 @@ esp_err_t WebServer::updateWifi(httpd_req_t* req) {
     }
 
     return sendWifi(req);
+}
+
+esp_err_t WebServer::sendUdpTelemetry(httpd_req_t* req) const {
+    const settings::UdpTelemetrySettings settings = settings_.udpTelemetry();
+
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "enabled", settings.enabled);
+    cJSON_AddNumberToObject(root, "scaleId", static_cast<double>(settings.scale_id));
+    cJSON_AddStringToObject(root, "targetHost", settings.target_host);
+    cJSON_AddNumberToObject(root, "port", settings.port);
+
+    char* text = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (text == nullptr) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json allocation failed");
+    }
+
+    setJsonHeaders(req);
+    const esp_err_t err = httpd_resp_send(req, text, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(text);
+    return err;
+}
+
+esp_err_t WebServer::updateUdpTelemetry(httpd_req_t* req) {
+    if (req->content_len >= kPostBufferSize) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body too large");
+    }
+
+    char buffer[kPostBufferSize]{};
+    std::size_t received = 0;
+    while (received < req->content_len) {
+        const int read = httpd_req_recv(req, buffer + received, req->content_len - received);
+        if (read <= 0) {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "body read failed");
+        }
+        received += static_cast<std::size_t>(read);
+    }
+
+    cJSON* root = cJSON_Parse(buffer);
+    if (root == nullptr) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+    }
+
+    settings::UdpTelemetrySettings udp = settings_.udpTelemetry();
+    cJSON* enabled = cJSON_GetObjectItemCaseSensitive(root, "enabled");
+    if (cJSON_IsBool(enabled)) {
+        udp.enabled = cJSON_IsTrue(enabled);
+    }
+
+    cJSON* scale_id = cJSON_GetObjectItemCaseSensitive(root, "scaleId");
+    if (cJSON_IsNumber(scale_id) && scale_id->valueint > 0) {
+        udp.scale_id = static_cast<uint32_t>(scale_id->valueint);
+    }
+
+    cJSON* target_host = cJSON_GetObjectItemCaseSensitive(root, "targetHost");
+    if (cJSON_IsString(target_host) && target_host->valuestring != nullptr) {
+        std::strncpy(udp.target_host, target_host->valuestring, sizeof(udp.target_host) - 1);
+        udp.target_host[sizeof(udp.target_host) - 1] = '\0';
+    }
+
+    cJSON* port = cJSON_GetObjectItemCaseSensitive(root, "port");
+    if (cJSON_IsNumber(port) && port->valueint > 0 && port->valueint <= 65535) {
+        udp.port = static_cast<uint16_t>(port->valueint);
+    }
+    cJSON_Delete(root);
+
+    const esp_err_t err = settings_.saveUdpTelemetry(udp);
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "UDP telemetry save failed: %s", esp_err_to_name(err));
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "UDP telemetry save failed");
+    }
+
+    return sendUdpTelemetry(req);
 }
 
 esp_err_t WebServer::sendStaticFile(httpd_req_t* req) const {

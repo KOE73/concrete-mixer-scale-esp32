@@ -41,7 +41,7 @@ struct FilterOutput {
     bool valid = false;
 };
 
-inline constexpr std::size_t kMaxFilterOutputs = 3;
+inline constexpr std::size_t kMaxFilterOutputs = 8;
 
 // Полное опубликованное состояние: последний физический замер и все результаты
 // фильтров. Этим объектом обмениваются процессор, индикация и Web.

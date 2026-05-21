@@ -1,5 +1,6 @@
 #include "web/wifi_manager.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 #include "config/network_config.hpp"
@@ -20,6 +21,23 @@ void copyString(char* destination, std::size_t destination_size, const char* sou
         return;
     }
     std::strncpy(destination, source, destination_size - 1);
+    destination[destination_size - 1] = '\0';
+}
+
+void formatMac(char* destination, std::size_t destination_size, const uint8_t* mac) {
+    if (destination_size == 0) {
+        return;
+    }
+
+    snprintf(destination,
+             destination_size,
+             "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0],
+             mac[1],
+             mac[2],
+             mac[3],
+             mac[4],
+             mac[5]);
     destination[destination_size - 1] = '\0';
 }
 
@@ -98,6 +116,14 @@ esp_err_t WifiManager::start() {
     WifiStatus next = status();
     next.ap_started = true;
     copyString(next.ap_ssid, sizeof(next.ap_ssid), config::kApSsid);
+    uint8_t ap_mac[6]{};
+    uint8_t sta_mac[6]{};
+    if (esp_wifi_get_mac(WIFI_IF_AP, ap_mac) == ESP_OK) {
+        formatMac(next.ap_mac, sizeof(next.ap_mac), ap_mac);
+    }
+    if (esp_wifi_get_mac(WIFI_IF_STA, sta_mac) == ESP_OK) {
+        formatMac(next.sta_mac, sizeof(next.sta_mac), sta_mac);
+    }
     setStatus(next);
     ESP_LOGI(kTag, "AP '%s' started", config::kApSsid);
 

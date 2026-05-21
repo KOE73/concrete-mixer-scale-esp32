@@ -65,8 +65,12 @@ namespace mixer::config
     inline constexpr uint32_t kWebServerTaskStackBytes = 8192;
 
     inline constexpr uint32_t kDisplayRefreshPeriodMs = 500;
-    inline constexpr uint32_t kMovingAverageWindow = 8;
+    inline constexpr uint32_t kMovingAverageWindow = 100;
     inline constexpr float kExponentialAlpha = 0.25f;
+
+    // Предфильтр выбросов (5-точечный медианный фильтр по каждому каналу).
+    // Подавляет одиночные и двойные соседние спайки без подбора порога.
+    inline constexpr bool kAnomalyFilterEnabled = true;
 
     inline constexpr DisplayDriver kDisplayDriver = DisplayDriver::Hub75;
     inline constexpr int kHub75Width = 64;

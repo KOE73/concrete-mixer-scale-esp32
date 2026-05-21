@@ -299,3 +299,21 @@ button {
   min-width: 110px;
   color: #aaa;
 }
+
+.device-info {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+  color: #aaa;
+  font-size: 13px;
+}
+
+.device-info span {
+  display: block;
+  margin-top: 6px;
+}
+
+.device-info strong {
+  color: #eee;
+  font-weight: 600;
+}

@@ -14,6 +14,13 @@ struct WifiCredentials {
     char password[65]{};
 };
 
+struct UdpTelemetrySettings {
+    bool enabled = true;
+    uint32_t scale_id = 1;
+    char target_host[64]{};
+    uint16_t port = 4222;
+};
+
 // Владеет постоянными настройками в NVS и отдает mutex-защищенные копии
 // рабочим модулям. Калибровку читает сэмплер, Wi-Fi читает сетевой менеджер;
 // Web меняет оба набора настроек через один store, чтобы правила хранения
@@ -26,19 +33,24 @@ public:
     esp_err_t load();
     esp_err_t save(const domain::CalibrationState& state);
     esp_err_t saveWifi(const WifiCredentials& credentials);
+    esp_err_t saveUdpTelemetry(const UdpTelemetrySettings& settings);
 
     domain::CalibrationState calibration() const;
     void setCalibration(const domain::CalibrationState& state);
     WifiCredentials wifiCredentials() const;
     void setWifiCredentials(const WifiCredentials& credentials);
+    UdpTelemetrySettings udpTelemetry() const;
+    void setUdpTelemetry(const UdpTelemetrySettings& settings);
 
 private:
     static domain::CalibrationState defaultCalibration();
     static WifiCredentials defaultWifiCredentials();
+    static UdpTelemetrySettings defaultUdpTelemetry();
 
     mutable SemaphoreHandle_t mutex_ = nullptr;
     domain::CalibrationState calibration_{};
     WifiCredentials wifi_{};
+    UdpTelemetrySettings udp_telemetry_{};
 };
 
 }  // пространство имен mixer::settings
