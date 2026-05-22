@@ -26,7 +26,7 @@ public:
 
 private:
     static esp_err_t staticFileHandler(httpd_req_t* req);
-    static esp_err_t weightHandler(httpd_req_t* req);
+    static esp_err_t stateCborHandler(httpd_req_t* req);
     static esp_err_t settingsGetHandler(httpd_req_t* req);
     static esp_err_t settingsPostHandler(httpd_req_t* req);
     static esp_err_t wifiGetHandler(httpd_req_t* req);
@@ -34,7 +34,7 @@ private:
     static esp_err_t udpTelemetryGetHandler(httpd_req_t* req);
     static esp_err_t udpTelemetryPostHandler(httpd_req_t* req);
 
-    esp_err_t sendWeight(httpd_req_t* req) const;
+    esp_err_t sendStateCbor(httpd_req_t* req) const;
     esp_err_t sendSettings(httpd_req_t* req) const;
     esp_err_t updateSettings(httpd_req_t* req);
     esp_err_t sendWifi(httpd_req_t* req) const;

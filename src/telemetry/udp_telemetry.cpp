@@ -97,17 +97,14 @@ void UdpTelemetryTask::sendState(int socket_fd, const domain::WeightState& state
         return;
     }
 
-    int64_t raw_sum = 0;
-    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
-        raw_sum += state.sample.raw[i];
-    }
-
     char flags[48]{};
-    std::snprintf(flags,
-                  sizeof(flags),
-                  "%s%s",
-                  state.sample.valid ? "valid" : "invalid",
-                  state.sample.valid ? "" : "|sensor_error");
+    if (state.sample.valid && state.sample.clean_valid) {
+        std::snprintf(flags, sizeof(flags), "valid");
+    } else if (state.sample.reject_reason != nullptr && state.sample.reject_reason[0] != '\0') {
+        std::snprintf(flags, sizeof(flags), "invalid|%s", state.sample.reject_reason);
+    } else {
+        std::snprintf(flags, sizeof(flags), "invalid");
+    }
 
     char packet[kPacketBufferSize]{};
     int written = std::snprintf(packet,
@@ -116,23 +113,11 @@ void UdpTelemetryTask::sendState(int socket_fd, const domain::WeightState& state
                                 static_cast<unsigned long>(settings.scale_id),
                                 static_cast<unsigned long long>(state.sample.sequence),
                                 static_cast<unsigned long long>(state.sample.timestamp_us / 1000));
-    for (std::size_t i = 0; i < config::kLoadCellCount && written > 0 &&
-                            static_cast<std::size_t>(written) < sizeof(packet);
-         ++i) {
-        written += std::snprintf(packet + written,
-                                 sizeof(packet) - static_cast<std::size_t>(written),
-                                 ",%ld",
-                                 static_cast<long>(state.sample.raw[i]));
-    }
-
-    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(packet)) {
-        return;
-    }
 
     written += std::snprintf(packet + written,
                              sizeof(packet) - static_cast<std::size_t>(written),
                              ",%lld,%.3f,%s",
-                             static_cast<long long>(raw_sum),
+                             static_cast<long long>(state.sample.raw_sum),
                              static_cast<double>(state.sample.weight),
                              flags);
 

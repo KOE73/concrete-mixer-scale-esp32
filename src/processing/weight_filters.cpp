@@ -13,48 +13,53 @@ const char* RawWeightFilter::name() const {
 void RawWeightFilter::reset() {}
 
 domain::FilterOutput RawWeightFilter::apply(const domain::WeightSample& sample) {
-    return {name(), sample.total, sample.weight, sample.valid};
+    return {name(), sample.raw_sum, sample.total, sample.weight, sample.valid};
 }
 
 MovingAverageWeightFilter::MovingAverageWeightFilter(std::size_t window, const char* name)
-    : window_(std::clamp<std::size_t>(window, 1, config::kMovingAverageWindow)), name_(name) {}
+    : window_(std::clamp<std::size_t>(window, 1, config::kMovingAverageMaxWindow)), name_(name) {
+    last_output_.name = name_;
+}
 
 const char* MovingAverageWeightFilter::name() const {
     return name_;
 }
 
 void MovingAverageWeightFilter::reset() {
-    total_values_.fill(0.0f);
-    weight_values_.fill(0.0f);
+    clean_sum_values_.fill(0);
     count_ = 0;
     index_ = 0;
+    running_sum_ = 0;
+    last_output_ = {name_, 0, 0.0f, 0.0f, false};
 }
 
 domain::FilterOutput MovingAverageWeightFilter::apply(const domain::WeightSample& sample) {
-    if (!sample.valid) {
-        return {name(), 0.0f, 0.0f, false};
+    if (!sample.valid || !sample.clean_valid) {
+        return last_output_;
     }
 
-    total_values_[index_] = sample.total;
-    weight_values_[index_] = sample.weight;
-    index_ = (index_ + 1) % window_;
-    if (count_ < window_) {
+    if (count_ == window_) {
+        running_sum_ -= clean_sum_values_[index_];
+    } else {
         ++count_;
     }
 
-    float total_sum = 0.0f;
-    float weight_sum = 0.0f;
-    for (std::size_t i = 0; i < count_; ++i) {
-        total_sum += total_values_[i];
-        weight_sum += weight_values_[i];
-    }
+    clean_sum_values_[index_] = sample.clean_sum;
+    running_sum_ += sample.clean_sum;
+    index_ = (index_ + 1) % window_;
 
-    const float count = static_cast<float>(count_);
-    return {name(), total_sum / count, weight_sum / count, true};
+    const int64_t average_raw_sum = static_cast<int64_t>(running_sum_ / static_cast<int64_t>(count_));
+    const float total = static_cast<float>(
+        static_cast<double>(average_raw_sum - sample.sum_offset) *
+        static_cast<double>(sample.sum_scale));
+    last_output_ = {name(), average_raw_sum, total, total, true};
+    return last_output_;
 }
 
 ExponentialWeightFilter::ExponentialWeightFilter(float alpha)
-    : alpha_(std::clamp(alpha, 0.0f, 1.0f)) {}
+    : alpha_(std::clamp(alpha, 0.0f, 1.0f)) {
+    last_output_.name = name();
+}
 
 const char* ExponentialWeightFilter::name() const {
     return "exponential";
@@ -62,25 +67,28 @@ const char* ExponentialWeightFilter::name() const {
 
 void ExponentialWeightFilter::reset() {
     has_value_ = false;
-    total_ = 0.0f;
-    weight_ = 0.0f;
+    clean_sum_ = 0.0f;
+    last_output_ = {name(), 0, 0.0f, 0.0f, false};
 }
 
 domain::FilterOutput ExponentialWeightFilter::apply(const domain::WeightSample& sample) {
-    if (!sample.valid) {
-        return {name(), 0.0f, 0.0f, false};
+    if (!sample.valid || !sample.clean_valid) {
+        return last_output_;
     }
 
     if (!has_value_) {
-        total_ = sample.total;
-        weight_ = sample.weight;
+        clean_sum_ = static_cast<float>(sample.clean_sum);
         has_value_ = true;
     } else {
-        total_ = alpha_ * sample.total + (1.0f - alpha_) * total_;
-        weight_ = alpha_ * sample.weight + (1.0f - alpha_) * weight_;
+        clean_sum_ = alpha_ * static_cast<float>(sample.clean_sum) + (1.0f - alpha_) * clean_sum_;
     }
 
-    return {name(), total_, weight_, true};
+    const int64_t raw_sum = static_cast<int64_t>(clean_sum_);
+    const float total = static_cast<float>(
+        static_cast<double>(raw_sum - sample.sum_offset) *
+        static_cast<double>(sample.sum_scale));
+    last_output_ = {name(), raw_sum, total, total, true};
+    return last_output_;
 }
 
 }  // пространство имен mixer::processing

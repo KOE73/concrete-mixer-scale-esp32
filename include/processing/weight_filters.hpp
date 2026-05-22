@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 #include "config/hardware_config.hpp"
 #include "domain/weight_types.hpp"
@@ -40,12 +41,13 @@ public:
     domain::FilterOutput apply(const domain::WeightSample& sample) override;
 
 private:
-    std::array<float, config::kMovingAverageWindow> total_values_{};
-    std::array<float, config::kMovingAverageWindow> weight_values_{};
-    std::size_t window_ = config::kMovingAverageWindow;
+    std::array<int64_t, config::kMovingAverageMaxWindow> clean_sum_values_{};
+    std::size_t window_ = config::kMovingAverageMaxWindow;
     const char* name_ = nullptr;
     std::size_t count_ = 0;
     std::size_t index_ = 0;
+    int64_t running_sum_ = 0;
+    domain::FilterOutput last_output_{};
 };
 
 // Легкий IIR-фильтр. Это второй вариант сглаживания: памяти нужно меньше, чем
@@ -61,8 +63,8 @@ public:
 private:
     float alpha_ = config::kExponentialAlpha;
     bool has_value_ = false;
-    float total_ = 0.0f;
-    float weight_ = 0.0f;
+    float clean_sum_ = 0.0f;
+    domain::FilterOutput last_output_{};
 };
 
 }  // пространство имен mixer::processing

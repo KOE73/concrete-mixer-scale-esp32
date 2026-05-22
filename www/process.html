@@ -45,67 +45,67 @@
       <canvas id="weightChart" width="640" height="180"></canvas>
     </section>
 
-    <section class="mixer-map">
-      <h2>Load cells</h2>
-      <svg viewBox="0 0 640 260" role="img" aria-label="Load cell placement on mixer">
-        <polygon points="116,130 478,54 478,206" fill="none" stroke="#555" stroke-width="5"/>
-        <text x="78" y="34" class="svg-heading">Front: support and handle side</text>
-        <text x="424" y="34" class="svg-heading">Rear: wheels</text>
-
-        <g class="load-cell-box">
-          <rect x="360" y="18" width="190" height="62" rx="6"/>
-          <text x="378" y="43">A1 rear_left</text>
-          <text x="378" y="66" id="svg-rear-left">--</text>
-        </g>
-        <g class="load-cell-box">
-          <rect x="360" y="180" width="190" height="62" rx="6"/>
-          <text x="378" y="205">A2 rear_right</text>
-          <text x="378" y="228" id="svg-rear-right">--</text>
-        </g>
-        <g class="load-cell-box">
-          <rect x="24" y="99" width="190" height="62" rx="6"/>
-          <text x="42" y="124">A3 front_support</text>
-          <text x="42" y="147" id="svg-front-support">--</text>
-        </g>
-      </svg>
-    </section>
-
     <section class="calibration-panel">
       <div class="section-title-row">
-        <h2>Calibration</h2>
-        <button id="zeroOffset" type="button" title="Use current raw values as zero offsets">⟲0 Zero offset</button>
+        <h2>Sum calibration</h2>
       </div>
       <div class="calibration-grid" id="calibration"></div>
       <div class="calibration-actions">
-        <label>Global scale
-          <input id="globalScale" type="number" step="0.000001" value="1">
+        <label>sumOffset
+          <input id="sumOffset" type="number" step="1" value="0">
         </label>
-        <button id="saveCalibration" type="button">Save scales</button>
+        <label>sumScale
+          <input id="sumScale" type="number" step="0.000001" value="1">
+        </label>
+        <button id="saveCalibration" type="button">Save calibration</button>
         <span id="calibrationMessage"></span>
+      </div>
+      <div class="settings-editor">
+        <div>
+          <h3>Units</h3>
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Raw/unit</th><th></th></tr>
+            </thead>
+            <tbody id="unitsEditor"></tbody>
+          </table>
+          <div class="inline-editor">
+            <input id="newUnitName" type="text" maxlength="5" placeholder="unit">
+            <input id="newUnitRaw" type="number" step="0.001" placeholder="raw/unit">
+            <button id="addUnit" type="button">Add unit</button>
+          </div>
+        </div>
+        <div>
+          <h3>Setpoints</h3>
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Raw</th><th></th></tr>
+            </thead>
+            <tbody id="setpointsEditor"></tbody>
+          </table>
+          <div class="inline-editor">
+            <input id="newSetpointName" type="text" maxlength="24" placeholder="name">
+            <input id="newSetpointRaw" type="number" step="1" placeholder="raw">
+            <button id="addSetpoint" type="button">Add point</button>
+          </div>
+        </div>
       </div>
     </section>
 
     <section class="process-grid">
       <div>
-        <h2>Channels</h2>
+        <h2>MA</h2>
         <table>
           <thead>
-            <tr><th>Channel</th><th>Ready</th><th>Raw</th><th>ADC</th><th>Weight</th></tr>
-          </thead>
-          <tbody id="channels"></tbody>
-        </table>
-      </div>
-      <div>
-        <h2>Filters</h2>
-        <table>
-          <thead>
-            <tr><th>Filter</th><th>Valid</th><th>Weight</th></tr>
+            <tr><th>MA</th><th>Valid</th><th>Raw sum</th><th>Weight</th></tr>
           </thead>
           <tbody id="filters"></tbody>
         </table>
       </div>
     </section>
   </main>
+  <script src="/cbor-x.min.js"></script>
+  <script src="/cbor.js"></script>
   <script src="/process.js"></script>
 </body>
 </html>

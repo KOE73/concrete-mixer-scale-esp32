@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/docs/">
+    <File Path="../docs/TODO_2.md" />
+  </Folder>
+  <Project Path="MixerScale.Analyzer/MixerScale.Analyzer.csproj" />
+  <Project Path="MixerScale.Controller/MixerScale.Controller.csproj" />
+  <Project Path="MixerScale.UdpRecorder/MixerScale.UdpRecorder.csproj" />
+</Solution>

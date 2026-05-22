@@ -145,8 +145,8 @@ protected:
         int height;
     };
 
-    static constexpr std::size_t kMaxRanges = 4;
-    static constexpr std::size_t kMaxSetpoints = 4;
+    static constexpr std::size_t kMaxRanges = 16;
+    static constexpr std::size_t kMaxSetpoints = 16;
 
     // Единственная обязательная точка расширения: потомок получает текущее
     // значение и рисует заполнение в уже вычисленной рабочей области.

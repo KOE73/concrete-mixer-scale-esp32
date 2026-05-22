@@ -1,13 +1,16 @@
 #pragma once
 
 #include "config/hardware_config.hpp"
+#include "domain/weight_types.hpp"
 #include "processing/weight_processor.hpp"
+#include "settings/settings_store.hpp"
 
 #include "esp_err.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <array>
 
 namespace mixer::display
 {
@@ -17,13 +20,20 @@ namespace mixer::display
     // индикации, поэтому HUB75, LCD и лог могут использовать один контракт.
     struct DisplayFrame
     {
+        struct Setpoint
+        {
+            const char *name = "";
+            int64_t raw_value = 0;
+        };
+
         const char *stage_name = "";
+        int64_t raw_sum = 0;
         float weight = 0.0f;
         float target_weight = 0.0f;
         float remaining_weight = 0.0f;
         float remaining_shovels = 0.0f;
-        std::array<float, config::kLoadCellCount> channel_weights{};
-        std::array<bool, config::kLoadCellCount> channel_ready{};
+        std::array<Setpoint, domain::kMaxSetpoints> setpoints{};
+        std::size_t setpoint_count = 0;
         uint32_t diagnostic_tick = 0;
         bool valid = false;
     };
@@ -70,7 +80,9 @@ namespace mixer::display
     class DisplayTask
     {
     public:
-        DisplayTask(processing::LatestWeightStore &latest, IDisplaySink &sink);
+        DisplayTask(processing::LatestWeightStore &latest,
+                    settings::SettingsStore &settings,
+                    IDisplaySink &sink);
 
         esp_err_t start();
 
@@ -79,6 +91,7 @@ namespace mixer::display
         void run();
 
         processing::LatestWeightStore &latest_;
+        settings::SettingsStore &settings_;
         IDisplaySink &sink_;
     };
 

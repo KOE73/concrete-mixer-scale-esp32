@@ -2,7 +2,10 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <limits>
+#include <memory>
 
 #include "cJSON.h"
 #include "config/hardware_config.hpp"
@@ -12,8 +15,11 @@ namespace mixer::web {
 namespace {
 
 constexpr char kTag[] = "web";
-constexpr std::size_t kPostBufferSize = 2048;
+constexpr std::size_t kMaxPostBodyBytes = 4096;
 constexpr std::size_t kFileBufferSize = 1024;
+constexpr std::size_t kCborBufferSize = 2048;
+
+using BodyBuffer = std::unique_ptr<char, decltype(&std::free)>;
 
 void setJsonHeaders(httpd_req_t* req) {
     httpd_resp_set_type(req, "application/json");
@@ -40,6 +46,46 @@ const char* contentTypeForPath(const char* path) {
     return "application/octet-stream";
 }
 
+bool isEnglishLettersOnly(const char* value) {
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+
+    for (const char* p = value; *p != '\0'; ++p) {
+        const char ch = *p;
+        if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+esp_err_t readJsonBody(httpd_req_t* req, BodyBuffer& body) {
+    if (req->content_len >= kMaxPostBodyBytes) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body too large");
+    }
+
+    body.reset(static_cast<char*>(std::calloc(req->content_len + 1, 1)));
+    if (body == nullptr) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "body allocation failed");
+    }
+
+    std::size_t received = 0;
+    while (received < req->content_len) {
+        const int read = httpd_req_recv(req, body.get() + received, req->content_len - received);
+        if (read == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue;
+        }
+        if (read <= 0) {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "body read failed");
+        }
+        received += static_cast<std::size_t>(read);
+    }
+
+    body.get()[received] = '\0';
+    return ESP_OK;
+}
+
 }  // анонимное пространство имен
 
 WebServer::WebServer(processing::LatestWeightStore& latest,
@@ -63,12 +109,12 @@ esp_err_t WebServer::start() {
         return err;
     }
 
-    httpd_uri_t weight{};
-    weight.uri = "/api/weight";
-    weight.method = HTTP_GET;
-    weight.handler = &WebServer::weightHandler;
-    weight.user_ctx = this;
-    httpd_register_uri_handler(server_, &weight);
+    httpd_uri_t state_cbor{};
+    state_cbor.uri = "/api/state.cbor";
+    state_cbor.method = HTTP_GET;
+    state_cbor.handler = &WebServer::stateCborHandler;
+    state_cbor.user_ctx = this;
+    httpd_register_uri_handler(server_, &state_cbor);
 
     httpd_uri_t settings_get{};
     settings_get.uri = "/api/settings";
@@ -134,8 +180,8 @@ esp_err_t WebServer::staticFileHandler(httpd_req_t* req) {
     return static_cast<WebServer*>(req->user_ctx)->sendStaticFile(req);
 }
 
-esp_err_t WebServer::weightHandler(httpd_req_t* req) {
-    return static_cast<WebServer*>(req->user_ctx)->sendWeight(req);
+esp_err_t WebServer::stateCborHandler(httpd_req_t* req) {
+    return static_cast<WebServer*>(req->user_ctx)->sendStateCbor(req);
 }
 
 esp_err_t WebServer::settingsGetHandler(httpd_req_t* req) {
@@ -154,6 +200,91 @@ esp_err_t WebServer::wifiPostHandler(httpd_req_t* req) {
     return static_cast<WebServer*>(req->user_ctx)->updateWifi(req);
 }
 
+class CborWriter {
+public:
+    CborWriter(uint8_t* data, std::size_t capacity) : data_(data), capacity_(capacity) {}
+
+    bool ok() const { return ok_; }
+    const uint8_t* data() const { return data_; }
+    std::size_t size() const { return pos_; }
+
+    void map(std::size_t count) { typeValue(5, count); }
+    void array(std::size_t count) { typeValue(4, count); }
+    void key(const char* value) { text(value); }
+    void text(const char* value) {
+        const std::size_t len = value == nullptr ? 0 : std::strlen(value);
+        typeValue(3, len);
+        bytes(reinterpret_cast<const uint8_t*>(value == nullptr ? "" : value), len);
+    }
+    void boolean(bool value) { byte(value ? 0xF5 : 0xF4); }
+    void u64(uint64_t value) { typeValue(0, value); }
+    void i64(int64_t value) {
+        if (value >= 0) {
+            typeValue(0, static_cast<uint64_t>(value));
+        } else {
+            typeValue(1, static_cast<uint64_t>(-1 - value));
+        }
+    }
+    void f64(double value) {
+        byte(0xFB);
+        static_assert(sizeof(double) == sizeof(uint64_t));
+        uint64_t raw = 0;
+        std::memcpy(&raw, &value, sizeof(raw));
+        for (int shift = 56; shift >= 0; shift -= 8) {
+            byte(static_cast<uint8_t>((raw >> shift) & 0xFF));
+        }
+    }
+
+private:
+    void typeValue(uint8_t major, uint64_t value) {
+        if (value <= 23) {
+            byte(static_cast<uint8_t>((major << 5) | value));
+        } else if (value <= std::numeric_limits<uint8_t>::max()) {
+            byte(static_cast<uint8_t>((major << 5) | 24));
+            byte(static_cast<uint8_t>(value));
+        } else if (value <= std::numeric_limits<uint16_t>::max()) {
+            byte(static_cast<uint8_t>((major << 5) | 25));
+            byte(static_cast<uint8_t>((value >> 8) & 0xFF));
+            byte(static_cast<uint8_t>(value & 0xFF));
+        } else if (value <= std::numeric_limits<uint32_t>::max()) {
+            byte(static_cast<uint8_t>((major << 5) | 26));
+            for (int shift = 24; shift >= 0; shift -= 8) {
+                byte(static_cast<uint8_t>((value >> shift) & 0xFF));
+            }
+        } else {
+            byte(static_cast<uint8_t>((major << 5) | 27));
+            for (int shift = 56; shift >= 0; shift -= 8) {
+                byte(static_cast<uint8_t>((value >> shift) & 0xFF));
+            }
+        }
+    }
+    void byte(uint8_t value) {
+        if (pos_ >= capacity_) {
+            ok_ = false;
+            return;
+        }
+        data_[pos_++] = value;
+    }
+    void bytes(const uint8_t* values, std::size_t len) {
+        if (pos_ + len > capacity_) {
+            ok_ = false;
+            return;
+        }
+        std::memcpy(data_ + pos_, values, len);
+        pos_ += len;
+    }
+
+    uint8_t* data_ = nullptr;
+    std::size_t capacity_ = 0;
+    std::size_t pos_ = 0;
+    bool ok_ = true;
+};
+
+void setCborHeaders(httpd_req_t* req) {
+    httpd_resp_set_type(req, "application/cbor");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+}
+
 esp_err_t WebServer::udpTelemetryGetHandler(httpd_req_t* req) {
     return static_cast<WebServer*>(req->user_ctx)->sendUdpTelemetry(req);
 }
@@ -162,78 +293,83 @@ esp_err_t WebServer::udpTelemetryPostHandler(httpd_req_t* req) {
     return static_cast<WebServer*>(req->user_ctx)->updateUdpTelemetry(req);
 }
 
-esp_err_t WebServer::sendWeight(httpd_req_t* req) const {
+esp_err_t WebServer::sendStateCbor(httpd_req_t* req) const {
     const domain::WeightState state = latest_.get();
 
-    cJSON* root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "sequence", static_cast<double>(state.sample.sequence));
-    cJSON_AddNumberToObject(root, "timestampUs", static_cast<double>(state.sample.timestamp_us));
-    cJSON_AddBoolToObject(root, "valid", state.sample.valid);
-    cJSON_AddNumberToObject(root, "total", state.sample.total);
-    cJSON_AddNumberToObject(root, "weight", state.sample.weight);
-    cJSON_AddBoolToObject(root, "diagnosticPartialRead",
-                          config::kHx711ReadReadySubsetForDiagnostics);
+    uint8_t buffer[kCborBufferSize]{};
+    CborWriter cbor(buffer, sizeof(buffer));
 
-    cJSON* target = cJSON_AddObjectToObject(root, "target");
-    cJSON_AddStringToObject(target, "stage", config::kDefaultBatchStageName);
-    cJSON_AddNumberToObject(target, "weight", config::kDefaultBatchTargetWeight);
-    cJSON_AddNumberToObject(target, "remaining",
-                            config::kDefaultBatchTargetWeight - state.sample.weight);
-    cJSON_AddNumberToObject(
-        target,
-        "remainingShovels",
-        config::kDefaultShovelWeight > 0.0f
-            ? (config::kDefaultBatchTargetWeight - state.sample.weight) /
-                  config::kDefaultShovelWeight
-            : 0.0f);
+    cbor.map(12);
+    cbor.key("sequence"); cbor.u64(state.sample.sequence);
+    cbor.key("timestampUs"); cbor.i64(state.sample.timestamp_us);
+    cbor.key("valid"); cbor.boolean(state.sample.valid);
+    cbor.key("cleanValid"); cbor.boolean(state.sample.clean_valid);
+    cbor.key("rejectReason"); cbor.text(state.sample.reject_reason);
+    cbor.key("rawSum"); cbor.i64(state.sample.raw_sum);
+    cbor.key("cleanSum"); cbor.i64(state.sample.clean_sum);
+    cbor.key("total"); cbor.f64(state.sample.total);
+    cbor.key("weight"); cbor.f64(state.sample.weight);
+    cbor.key("diagnosticPartialRead"); cbor.boolean(config::kHx711ReadReadySubsetForDiagnostics);
 
-    cJSON* channels = cJSON_AddArrayToObject(root, "channels");
-    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
-        cJSON* channel = cJSON_CreateObject();
-        cJSON_AddNumberToObject(channel, "index", static_cast<double>(i));
-        cJSON_AddStringToObject(channel, "name", config::kLoadCells[i].name);
-        cJSON_AddBoolToObject(channel, "active", config::kLoadCells[i].enabled);
-        cJSON_AddBoolToObject(channel, "ready", state.sample.ready[i]);
-        cJSON_AddNumberToObject(channel, "raw", state.sample.raw[i]);
-        cJSON_AddNumberToObject(channel, "weight", state.sample.channels[i]);
-        cJSON_AddItemToArray(channels, channel);
-    }
+    cbor.key("target");
+    cbor.map(4);
+    cbor.key("stage"); cbor.text(config::kDefaultBatchStageName);
+    cbor.key("weight"); cbor.f64(config::kDefaultBatchTargetWeight);
+    cbor.key("remaining"); cbor.f64(config::kDefaultBatchTargetWeight - state.sample.weight);
+    cbor.key("remainingShovels");
+    cbor.f64(config::kDefaultShovelWeight > 0.0f
+                 ? (config::kDefaultBatchTargetWeight - state.sample.weight) / config::kDefaultShovelWeight
+                 : 0.0f);
 
-    cJSON* filters = cJSON_AddArrayToObject(root, "filters");
+    cbor.key("ma");
+    cbor.array(state.filter_count);
     for (std::size_t i = 0; i < state.filter_count; ++i) {
-        cJSON* filter = cJSON_CreateObject();
-        cJSON_AddStringToObject(filter, "name", state.filters[i].name);
-        cJSON_AddBoolToObject(filter, "valid", state.filters[i].valid);
-        cJSON_AddNumberToObject(filter, "total", state.filters[i].total);
-        cJSON_AddNumberToObject(filter, "weight", state.filters[i].weight);
-        cJSON_AddItemToArray(filters, filter);
+        cbor.map(5);
+        cbor.key("name"); cbor.text(state.filters[i].name);
+        cbor.key("valid"); cbor.boolean(state.filters[i].valid);
+        cbor.key("rawSum"); cbor.i64(state.filters[i].raw_sum);
+        cbor.key("total"); cbor.f64(state.filters[i].total);
+        cbor.key("weight"); cbor.f64(state.filters[i].weight);
     }
 
-    char* text = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (text == nullptr) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json allocation failed");
+    if (!cbor.ok()) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "cbor buffer too small");
     }
 
-    setJsonHeaders(req);
-    const esp_err_t err = httpd_resp_send(req, text, HTTPD_RESP_USE_STRLEN);
-    cJSON_free(text);
-    return err;
+    setCborHeaders(req);
+    return httpd_resp_send(req, reinterpret_cast<const char*>(cbor.data()), cbor.size());
 }
 
 esp_err_t WebServer::sendSettings(httpd_req_t* req) const {
     const domain::CalibrationState calibration = settings_.calibration();
 
     cJSON* root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "globalScale", calibration.global_scale);
-    cJSON* channels = cJSON_AddArrayToObject(root, "channels");
-    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
-        cJSON* channel = cJSON_CreateObject();
-        cJSON_AddNumberToObject(channel, "index", static_cast<double>(i));
-        cJSON_AddStringToObject(channel, "name", config::kLoadCells[i].name);
-        cJSON_AddNumberToObject(channel, "offset", calibration.offsets[i]);
-        cJSON_AddNumberToObject(channel, "scale", calibration.scales[i]);
-        cJSON_AddItemToArray(channels, channel);
+    cJSON_AddNumberToObject(root, "sumOffset", static_cast<double>(calibration.sum_offset));
+    cJSON_AddNumberToObject(root, "sumScale", calibration.sum_scale);
+    cJSON* units = cJSON_AddArrayToObject(root, "units");
+    for (std::size_t i = 0; i < calibration.unit_count && i < domain::kMaxUnitConversions; ++i) {
+        const domain::UnitConversion& unit = calibration.units[i];
+        if (!unit.enabled) {
+            continue;
+        }
+
+        cJSON* item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "name", unit.name);
+        cJSON_AddNumberToObject(item, "rawPerUnit", unit.raw_per_unit);
+        cJSON_AddItemToArray(units, item);
+    }
+
+    cJSON* setpoints = cJSON_AddArrayToObject(root, "setpoints");
+    for (std::size_t i = 0; i < calibration.setpoint_count && i < domain::kMaxSetpoints; ++i) {
+        const domain::Setpoint& setpoint = calibration.setpoints[i];
+        if (!setpoint.enabled) {
+            continue;
+        }
+
+        cJSON* item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "name", setpoint.name);
+        cJSON_AddNumberToObject(item, "rawValue", static_cast<double>(setpoint.raw_value));
+        cJSON_AddItemToArray(setpoints, item);
     }
 
     char* text = cJSON_PrintUnformatted(root);
@@ -249,59 +385,81 @@ esp_err_t WebServer::sendSettings(httpd_req_t* req) const {
 }
 
 esp_err_t WebServer::updateSettings(httpd_req_t* req) {
-    if (req->content_len >= kPostBufferSize) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body too large");
+    BodyBuffer body(nullptr, &std::free);
+    esp_err_t body_err = readJsonBody(req, body);
+    if (body_err != ESP_OK) {
+        return body_err;
     }
 
-    char buffer[kPostBufferSize]{};
-    std::size_t received = 0;
-    while (received < req->content_len) {
-        const int read = httpd_req_recv(req, buffer + received, req->content_len - received);
-        if (read <= 0) {
-            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "body read failed");
-        }
-        received += static_cast<std::size_t>(read);
-    }
-
-    cJSON* root = cJSON_Parse(buffer);
+    cJSON* root = cJSON_Parse(body.get());
     if (root == nullptr) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
     }
 
     domain::CalibrationState calibration = settings_.calibration();
 
-    cJSON* global_scale = cJSON_GetObjectItemCaseSensitive(root, "globalScale");
-    if (cJSON_IsNumber(global_scale)) {
-        calibration.global_scale = static_cast<float>(global_scale->valuedouble);
+    cJSON* sum_offset = cJSON_GetObjectItemCaseSensitive(root, "sumOffset");
+    if (cJSON_IsNumber(sum_offset)) {
+        calibration.sum_offset = static_cast<int64_t>(sum_offset->valuedouble);
     }
 
-    cJSON* channels = cJSON_GetObjectItemCaseSensitive(root, "channels");
-    if (channels != nullptr && !cJSON_IsArray(channels)) {
-        cJSON_Delete(root);
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "channels must be an array");
+    cJSON* sum_scale = cJSON_GetObjectItemCaseSensitive(root, "sumScale");
+    if (cJSON_IsNumber(sum_scale)) {
+        calibration.sum_scale = static_cast<float>(sum_scale->valuedouble);
     }
 
-    cJSON* channel = nullptr;
-    cJSON_ArrayForEach(channel, channels) {
-        cJSON* index_value = cJSON_GetObjectItemCaseSensitive(channel, "index");
-        if (!cJSON_IsNumber(index_value)) {
-            continue;
-        }
+    cJSON* units = cJSON_GetObjectItemCaseSensitive(root, "units");
+    if (cJSON_IsArray(units)) {
+        calibration.units = {};
+        calibration.unit_count = 0;
 
-        const int index = index_value->valueint;
-        if (index < 0 || static_cast<std::size_t>(index) >= config::kLoadCellCount) {
-            continue;
-        }
+        const int unit_count = cJSON_GetArraySize(units);
+        for (int i = 0; i < unit_count && calibration.unit_count < domain::kMaxUnitConversions; ++i) {
+            cJSON* item = cJSON_GetArrayItem(units, i);
+            if (!cJSON_IsObject(item)) {
+                continue;
+            }
+            cJSON* name = cJSON_GetObjectItemCaseSensitive(item, "name");
+            cJSON* raw_per_unit = cJSON_GetObjectItemCaseSensitive(item, "rawPerUnit");
+            if (!cJSON_IsString(name) ||
+                !isEnglishLettersOnly(name->valuestring) ||
+                !cJSON_IsNumber(raw_per_unit) ||
+                raw_per_unit->valuedouble <= 0.0) {
+                continue;
+            }
 
-        cJSON* offset = cJSON_GetObjectItemCaseSensitive(channel, "offset");
-        if (cJSON_IsNumber(offset)) {
-            calibration.offsets[static_cast<std::size_t>(index)] = offset->valueint;
+            domain::UnitConversion& unit = calibration.units[calibration.unit_count++];
+            unit.enabled = true;
+            std::strncpy(unit.name, name->valuestring, domain::kUnitNameMaxLength);
+            unit.name[domain::kUnitNameMaxLength] = '\0';
+            unit.raw_per_unit = static_cast<float>(raw_per_unit->valuedouble);
         }
+    }
 
-        cJSON* scale = cJSON_GetObjectItemCaseSensitive(channel, "scale");
-        if (cJSON_IsNumber(scale)) {
-            calibration.scales[static_cast<std::size_t>(index)] =
-                static_cast<float>(scale->valuedouble);
+    cJSON* setpoints = cJSON_GetObjectItemCaseSensitive(root, "setpoints");
+    if (cJSON_IsArray(setpoints)) {
+        calibration.setpoints = {};
+        calibration.setpoint_count = 0;
+
+        const int setpoint_count = cJSON_GetArraySize(setpoints);
+        for (int i = 0; i < setpoint_count && calibration.setpoint_count < domain::kMaxSetpoints; ++i) {
+            cJSON* item = cJSON_GetArrayItem(setpoints, i);
+            if (!cJSON_IsObject(item)) {
+                continue;
+            }
+            cJSON* name = cJSON_GetObjectItemCaseSensitive(item, "name");
+            cJSON* raw_value = cJSON_GetObjectItemCaseSensitive(item, "rawValue");
+            if (!cJSON_IsString(name) || name->valuestring == nullptr ||
+                name->valuestring[0] == '\0' ||
+                !cJSON_IsNumber(raw_value)) {
+                continue;
+            }
+
+            domain::Setpoint& setpoint = calibration.setpoints[calibration.setpoint_count++];
+            setpoint.enabled = true;
+            std::strncpy(setpoint.name, name->valuestring, domain::kSetpointNameMaxLength);
+            setpoint.name[domain::kSetpointNameMaxLength] = '\0';
+            setpoint.raw_value = static_cast<int64_t>(raw_value->valuedouble);
         }
     }
     cJSON_Delete(root);
@@ -346,21 +504,13 @@ esp_err_t WebServer::sendWifi(httpd_req_t* req) const {
 }
 
 esp_err_t WebServer::updateWifi(httpd_req_t* req) {
-    if (req->content_len >= kPostBufferSize) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body too large");
+    BodyBuffer body(nullptr, &std::free);
+    esp_err_t body_err = readJsonBody(req, body);
+    if (body_err != ESP_OK) {
+        return body_err;
     }
 
-    char buffer[kPostBufferSize]{};
-    std::size_t received = 0;
-    while (received < req->content_len) {
-        const int read = httpd_req_recv(req, buffer + received, req->content_len - received);
-        if (read <= 0) {
-            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "body read failed");
-        }
-        received += static_cast<std::size_t>(read);
-    }
-
-    cJSON* root = cJSON_Parse(buffer);
+    cJSON* root = cJSON_Parse(body.get());
     if (root == nullptr) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
     }
@@ -423,21 +573,13 @@ esp_err_t WebServer::sendUdpTelemetry(httpd_req_t* req) const {
 }
 
 esp_err_t WebServer::updateUdpTelemetry(httpd_req_t* req) {
-    if (req->content_len >= kPostBufferSize) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body too large");
+    BodyBuffer body(nullptr, &std::free);
+    esp_err_t body_err = readJsonBody(req, body);
+    if (body_err != ESP_OK) {
+        return body_err;
     }
 
-    char buffer[kPostBufferSize]{};
-    std::size_t received = 0;
-    while (received < req->content_len) {
-        const int read = httpd_req_recv(req, buffer + received, req->content_len - received);
-        if (read <= 0) {
-            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "body read failed");
-        }
-        received += static_cast<std::size_t>(read);
-    }
-
-    cJSON* root = cJSON_Parse(buffer);
+    cJSON* root = cJSON_Parse(body.get());
     if (root == nullptr) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
     }

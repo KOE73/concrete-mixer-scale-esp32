@@ -25,32 +25,30 @@ namespace mixer::config
         SharedClockBus,
     };
 
-    // Описывает один физический канал HX711. Калибровка лежит здесь, потому что
-    // offset и scale относятся к конкретной установке датчика, а обработка дальше
-    // работает уже с нормализованными массивами из этой конфигурации.
+    // Описывает один физический вход HX711. Это только железо: рабочая модель веса
+    // дальше использует суммарный виртуальный сигнал, без поканальной калибровки.
     struct Hx711ChannelConfig
     {
         const char *name;
         gpio_num_t dout_pin;
         gpio_num_t sck_pin;
         hx711_gain_t gain;
-        int32_t offset;
-        float scale;
         bool enabled;
     };
 
     // Чтобы добавить или убрать тензодатчики, меняй этот массив. Остальная прошивка
     // использует kLoadCellCount и не должна прошивать в логике ровно 3 канала.
     inline constexpr std::array<Hx711ChannelConfig, 3> kLoadCells{{
-        {"rear_left", GPIO_NUM_3, GPIO_NUM_11, HX711_GAIN_A_128, 0, 1.0f, true},
-        {"rear_right", GPIO_NUM_9, GPIO_NUM_11, HX711_GAIN_A_128, 0, 1.0f, true},
-        {"front_support", GPIO_NUM_10, GPIO_NUM_11, HX711_GAIN_A_128, 0, 1.0f, true},
+        {"rear_left", GPIO_NUM_3, GPIO_NUM_11, HX711_GAIN_A_128, true},
+        {"rear_right", GPIO_NUM_9, GPIO_NUM_11, HX711_GAIN_A_128, true},
+        {"front_support", GPIO_NUM_10, GPIO_NUM_11, HX711_GAIN_A_128, true},
     }};
 
     inline constexpr Hx711ReadDriver kHx711ReadDriver = Hx711ReadDriver::SharedClockBus;
     inline constexpr std::size_t kLoadCellCount = kLoadCells.size();
 
-    inline constexpr float kDefaultGlobalScale = 1.0f;
+    inline constexpr int64_t kDefaultSumOffset = 0;
+    inline constexpr float kDefaultSumScale = 1.0f;
     inline constexpr char kDefaultBatchStageName[] = "material";
     inline constexpr float kDefaultBatchTargetWeight = 100.0f;
     inline constexpr float kDefaultShovelWeight = 5.0f;
@@ -65,12 +63,15 @@ namespace mixer::config
     inline constexpr uint32_t kWebServerTaskStackBytes = 8192;
 
     inline constexpr uint32_t kDisplayRefreshPeriodMs = 500;
-    inline constexpr uint32_t kMovingAverageWindow = 100;
+    inline constexpr uint32_t kMovingAverageMaxWindow = 600;
     inline constexpr float kExponentialAlpha = 0.25f;
 
-    // Предфильтр выбросов (5-точечный медианный фильтр по каждому каналу).
-    // Подавляет одиночные и двойные соседние спайки без подбора порога.
-    inline constexpr bool kAnomalyFilterEnabled = true;
+    // Hard reject отбрасывает только физически невозможные цифровые глюки.
+    // Сравнение идет по суммарному виртуальному датчику: новый raw_sum против
+    // последнего принятого clean_sum. Отклоненный сэмпл остается в логе, но не
+    // попадает в MA.
+    inline constexpr bool kHardRejectEnabled = true;
+    inline constexpr int64_t kHardRejectDeltaRawSum = 1000000;
 
     inline constexpr DisplayDriver kDisplayDriver = DisplayDriver::Hub75;
     inline constexpr int kHub75Width = 64;

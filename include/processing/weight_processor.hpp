@@ -27,24 +27,16 @@ private:
     domain::WeightState state_{};
 };
 
-// Предварительный 5-точечный медианный фильтр выбросов по каждому каналу.
-// Хранит пять откалиброванных значений на канал и выдаёт медиану окна. Такое
-// окно подавляет одиночные и двойные соседние импульсы: нормальные три точки
-// остаются большинством. Задержка вывода — 2 сэмпла (около 200 мс).
-class AnomalyPreFilter {
+// Hard reject по суммарному виртуальному датчику. Он не сглаживает данные, а
+// только не допускает физически невозможный одиночный скачок в clean/MA поток.
+class HardRejectFilter {
 public:
     domain::WeightSample process(const domain::WeightSample& sample);
     void reset();
 
 private:
-    static constexpr std::size_t kWindow = 5;
-    static constexpr std::size_t kCenter = kWindow / 2;
-
-    // buf_[ch][0] — новейшее, buf_[ch][kCenter] — центральное значение окна.
-    std::array<std::array<float, kWindow>, config::kLoadCellCount> buf_{};
-    std::array<std::size_t, config::kLoadCellCount> count_{};
-
-    static float median5(std::array<float, kWindow> values);
+    bool has_last_good_ = false;
+    int64_t last_good_clean_sum_ = 0;
 };
 
 // Потребитель raw-замеров и владелец алгоритмов фильтрации. Он отделяет сбор
@@ -63,12 +55,14 @@ private:
 
     QueueHandle_t input_queue_ = nullptr;
     LatestWeightStore& latest_;
-    AnomalyPreFilter anomaly_filter_{};
+    HardRejectFilter hard_reject_filter_{};
     RawWeightFilter raw_filter_{};
-    MovingAverageWeightFilter ma_1s_filter_{10, "ma_1s"};
-    MovingAverageWeightFilter ma_3s_filter_{30, "ma_3s"};
-    MovingAverageWeightFilter ma_5s_filter_{50, "ma_5s"};
-    MovingAverageWeightFilter ma_10s_filter_{100, "ma_10s"};
+    MovingAverageWeightFilter ma_1s_filter_{1000 / config::kSamplePeriodMs, "ma_1s"};
+    MovingAverageWeightFilter ma_3s_filter_{3000 / config::kSamplePeriodMs, "ma_3s"};
+    MovingAverageWeightFilter ma_5s_filter_{5000 / config::kSamplePeriodMs, "ma_5s"};
+    MovingAverageWeightFilter ma_10s_filter_{10000 / config::kSamplePeriodMs, "ma_10s"};
+    MovingAverageWeightFilter ma_30s_filter_{30000 / config::kSamplePeriodMs, "ma_30s"};
+    MovingAverageWeightFilter ma_60s_filter_{60000 / config::kSamplePeriodMs, "ma_60s"};
     ExponentialWeightFilter exponential_filter_{config::kExponentialAlpha};
     std::array<IWeightFilter*, domain::kMaxFilterOutputs> filters_{};
 };

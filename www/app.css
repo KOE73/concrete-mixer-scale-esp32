@@ -155,6 +155,8 @@ button {
   .process-grid,
   .calibration-grid,
   .calibration-actions,
+  .settings-editor,
+  .inline-editor,
   form {
     grid-template-columns: 1fr;
   }
@@ -229,40 +231,10 @@ button {
   gap: 12px;
 }
 
-.mixer-map,
 .calibration-panel {
   margin-bottom: 24px;
   border: 1px solid #333;
   padding: 12px;
-}
-
-.mixer-map svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  background: #111;
-}
-
-.svg-heading {
-  fill: #aaa;
-  font-size: 13px;
-}
-
-.load-cell-box rect {
-  fill: #151515;
-  stroke: #4dd38a;
-  stroke-width: 2;
-}
-
-.load-cell-box text {
-  fill: #eee;
-  font-size: 15px;
-}
-
-.load-cell-box text:last-child {
-  fill: #4dd38a;
-  font-size: 17px;
-  font-weight: 700;
 }
 
 .section-title-row {
@@ -293,6 +265,36 @@ button {
   grid-template-columns: 1fr auto auto;
   gap: 12px;
   align-items: end;
+}
+
+.settings-editor {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.settings-editor h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.inline-editor {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.compact-input {
+  min-height: 32px;
+  margin-top: 0;
+}
+
+.compact-button {
+  min-width: 74px;
+  min-height: 32px;
 }
 
 #calibrationMessage {

@@ -5,7 +5,6 @@ const histories = {
   ma_5s: [],
   ma_10s: []
 };
-const channelHistory = new Map();
 const maxHistory = 90;
 let latestWeightData = null;
 let settingsData = null;
@@ -15,15 +14,25 @@ function formatNumber(value, digits = 2) {
 }
 
 function primaryFilter(data) {
-  return data.filters.find((item) => item.name === 'ma_3s') || data.filters.find((item) => item.name === 'moving_average') || data.filters[0] || null;
-}
-
-function svgIdForChannel(name) {
-  return `svg-${name.replace(/_/g, '-')}`;
+  return data.ma.find((item) => item.name === 'ma_3s') || data.ma.find((item) => item.name === 'moving_average') || data.ma[0] || null;
 }
 
 function showCalibrationMessage(message) {
   document.getElementById('calibrationMessage').textContent = message;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function isEnglishLetters(value) {
+  return /^[A-Za-z]+$/.test(value);
 }
 
 async function loadSettings() {
@@ -37,33 +46,48 @@ function renderCalibration() {
     return;
   }
 
-  document.getElementById('globalScale').value = settingsData.globalScale ?? 1;
-  document.getElementById('calibration').innerHTML = settingsData.channels.map((channel) => `
-    <label>${channel.name}
-      <input
-        type="number"
-        step="0.000001"
-        value="${channel.scale ?? 1}"
-        data-scale-index="${channel.index}">
-    </label>
-  `).join('');
+  document.getElementById('sumOffset').value = settingsData.sumOffset ?? 0;
+  document.getElementById('sumScale').value = settingsData.sumScale ?? 1;
+  document.getElementById('calibration').textContent = '';
+  renderUnitsEditor();
+  renderSetpointsEditor();
 }
 
 function readSettingsFromForm() {
-  const next = {
-    globalScale: Number.parseFloat(document.getElementById('globalScale').value) || 1,
-    channels: settingsData.channels.map((channel) => ({ ...channel })),
+  return {
+    sumOffset: Number.parseInt(document.getElementById('sumOffset').value || '0', 10),
+    sumScale: Number.parseFloat(document.getElementById('sumScale').value) || 1,
+    units: settingsData?.units ?? [],
+    setpoints: settingsData?.setpoints ?? [],
   };
+}
 
-  document.querySelectorAll('[data-scale-index]').forEach((input) => {
-    const index = Number.parseInt(input.dataset.scaleIndex, 10);
-    const channel = next.channels.find((item) => item.index === index);
-    if (channel) {
-      channel.scale = Number.parseFloat(input.value) || 1;
-    }
-  });
+function renderUnitsEditor() {
+  const units = settingsData?.units ?? [];
+  document.getElementById('unitsEditor').innerHTML = units.map((unit, index) => `
+    <tr>
+      <td><input class="compact-input" data-unit-name="${index}" maxlength="5" value="${escapeHtml(unit.name)}"></td>
+      <td><input class="compact-input" data-unit-raw="${index}" type="number" step="0.001" value="${Number(unit.rawPerUnit) || 0}"></td>
+      <td>
+        <button class="compact-button" data-save-unit="${index}" type="button">Save</button>
+        <button class="compact-button" data-delete-unit="${index}" type="button">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
 
-  return next;
+function renderSetpointsEditor() {
+  const setpoints = settingsData?.setpoints ?? [];
+  document.getElementById('setpointsEditor').innerHTML = setpoints.map((setpoint, index) => `
+    <tr>
+      <td><input class="compact-input" data-setpoint-name="${index}" maxlength="24" value="${escapeHtml(setpoint.name)}"></td>
+      <td><input class="compact-input" data-setpoint-raw="${index}" type="number" step="1" value="${Number(setpoint.rawValue) || 0}"></td>
+      <td>
+        <button class="compact-button" data-save-setpoint="${index}" type="button">Save</button>
+        <button class="compact-button" data-delete-setpoint="${index}" type="button">Delete</button>
+      </td>
+    </tr>
+  `).join('');
 }
 
 async function saveSettings(nextSettings) {
@@ -162,8 +186,7 @@ function drawChart(targetWeight) {
 }
 
 async function updateProcess() {
-  const response = await fetch('/api/weight');
-  const data = await response.json();
+  const data = await window.MixerScaleCbor.fetchState();
   latestWeightData = data;
   const primary = primaryFilter(data);
   const weight = primary && primary.valid ? primary.weight : (data.valid ? data.weight : null);
@@ -175,7 +198,7 @@ async function updateProcess() {
   }
 
   ['ma_1s', 'ma_3s', 'ma_5s', 'ma_10s'].forEach((key) => {
-    const filter = data.filters.find((f) => f.name === key);
+    const filter = data.ma.find((f) => f.name === key);
     const val = filter && filter.valid ? filter.weight : null;
     histories[key].push(val);
     while (histories[key].length > maxHistory) {
@@ -190,30 +213,8 @@ async function updateProcess() {
   document.getElementById('shovels').textContent = formatNumber(data.target.remainingShovels, 1);
   document.getElementById('sample').textContent = `${data.sequence} ${data.valid ? 'valid' : 'invalid'}`;
 
-  data.channels.forEach((channel) => {
-    const samples = channelHistory.get(channel.name) || [];
-    if (Number.isFinite(channel.raw)) {
-      samples.push(channel.raw);
-      while (samples.length > 24) {
-        samples.shift();
-      }
-    }
-    channelHistory.set(channel.name, samples);
-  });
-
-  document.getElementById('channels').innerHTML = data.channels.map((channel) =>
-    `<tr><td>${channel.name}</td><td>${channel.ready ? 'yes' : 'no'}</td><td>${channel.raw}</td><td>${adcActivity(channel.name)}</td><td>${formatNumber(channel.weight)}</td></tr>`
-  ).join('');
-
-  data.channels.forEach((channel) => {
-    const svgValue = document.getElementById(svgIdForChannel(channel.name));
-    if (svgValue) {
-      svgValue.textContent = `${formatNumber(channel.weight)} kg`;
-    }
-  });
-
-  document.getElementById('filters').innerHTML = data.filters.map((filter) =>
-    `<tr><td>${filter.name}</td><td>${filter.valid ? 'yes' : 'no'}</td><td>${formatNumber(filter.weight)}</td></tr>`
+  document.getElementById('filters').innerHTML = data.ma.map((filter) =>
+    `<tr><td>${filter.name}</td><td>${filter.valid ? 'yes' : 'no'}</td><td>${filter.rawSum}</td><td>${formatNumber(filter.weight)}</td></tr>`
   ).join('');
 
   drawChart(data.target.weight);
@@ -234,40 +235,105 @@ document.getElementById('saveCalibration').addEventListener('click', async () =>
     showCalibrationMessage(error.message);
   }
 });
-
-document.getElementById('zeroOffset').addEventListener('click', async () => {
+document.getElementById('addUnit').addEventListener('click', async () => {
   try {
     if (!settingsData) {
       await loadSettings();
     }
-    if (!latestWeightData) {
-      throw new Error('No sample yet');
+    const name = document.getElementById('newUnitName').value.trim();
+    const rawPerUnit = Number.parseFloat(document.getElementById('newUnitRaw').value);
+    if (!isEnglishLetters(name)) {
+      throw new Error('Unit must contain English letters only');
     }
-
+    if (!Number.isFinite(rawPerUnit) || rawPerUnit <= 0) {
+      throw new Error('Raw/unit must be positive');
+    }
     const next = readSettingsFromForm();
-    next.channels = next.channels.map((channel) => {
-      const live = latestWeightData.channels.find((item) => item.index === channel.index);
-      return live ? { ...channel, offset: live.raw } : channel;
-    });
-
+    next.units = [...(settingsData.units ?? []), { name: name.slice(0, 5), rawPerUnit }];
     await saveSettings(next);
-    showCalibrationMessage('Zero offsets saved');
+    document.getElementById('newUnitName').value = '';
+    document.getElementById('newUnitRaw').value = '';
+    showCalibrationMessage('Unit saved');
+  } catch (error) {
+    showCalibrationMessage(error.message);
+  }
+});
+document.getElementById('unitsEditor').addEventListener('click', async (event) => {
+  const saveIndex = event.target.dataset.saveUnit;
+  const deleteIndex = event.target.dataset.deleteUnit;
+  if (saveIndex === undefined && deleteIndex === undefined) {
+    return;
+  }
+  try {
+    const units = [...(settingsData?.units ?? [])];
+    if (saveIndex !== undefined) {
+      const index = Number(saveIndex);
+      const name = document.querySelector(`[data-unit-name="${index}"]`).value.trim();
+      const rawPerUnit = Number.parseFloat(document.querySelector(`[data-unit-raw="${index}"]`).value);
+      if (!isEnglishLetters(name)) {
+        throw new Error('Unit must contain English letters only');
+      }
+      if (!Number.isFinite(rawPerUnit) || rawPerUnit <= 0) {
+        throw new Error('Raw/unit must be positive');
+      }
+      units[index] = { name: name.slice(0, 5), rawPerUnit };
+    } else {
+      units.splice(Number(deleteIndex), 1);
+    }
+    const next = readSettingsFromForm();
+    next.units = units;
+    await saveSettings(next);
+    showCalibrationMessage('Units saved');
   } catch (error) {
     showCalibrationMessage(error.message);
   }
 });
 
-function adcActivity(name) {
-  const samples = channelHistory.get(name) || [];
-  if (samples.length < 2) {
-    return '<span class="adc-idle"></span>';
+document.getElementById('addSetpoint').addEventListener('click', async () => {
+  try {
+    if (!settingsData) {
+      await loadSettings();
+    }
+    const name = document.getElementById('newSetpointName').value.trim();
+    const rawValue = Number.parseInt(document.getElementById('newSetpointRaw').value || '0', 10);
+    if (!name) {
+      throw new Error('Setpoint name is required');
+    }
+    const next = readSettingsFromForm();
+    next.setpoints = [...(settingsData.setpoints ?? []), { name: name.slice(0, 24), rawValue }];
+    await saveSettings(next);
+    document.getElementById('newSetpointName').value = '';
+    document.getElementById('newSetpointRaw').value = '';
+    showCalibrationMessage('Setpoint saved');
+  } catch (error) {
+    showCalibrationMessage(error.message);
   }
+});
 
-  const min = Math.min(...samples);
-  const max = Math.max(...samples);
-  const range = Math.max(max - min, 1);
-  return `<span class="adc-bars">${samples.slice(-12).map((value) => {
-    const height = Math.max(2, Math.round(((value - min) / range) * 18));
-    return `<i style="height:${height}px"></i>`;
-  }).join('')}</span>`;
-}
+document.getElementById('setpointsEditor').addEventListener('click', async (event) => {
+  const saveIndex = event.target.dataset.saveSetpoint;
+  const deleteIndex = event.target.dataset.deleteSetpoint;
+  if (saveIndex === undefined && deleteIndex === undefined) {
+    return;
+  }
+  try {
+    const setpoints = [...(settingsData?.setpoints ?? [])];
+    if (saveIndex !== undefined) {
+      const index = Number(saveIndex);
+      const name = document.querySelector(`[data-setpoint-name="${index}"]`).value.trim();
+      const rawValue = Number.parseInt(document.querySelector(`[data-setpoint-raw="${index}"]`).value || '0', 10);
+      if (!name) {
+        throw new Error('Setpoint name is required');
+      }
+      setpoints[index] = { name: name.slice(0, 24), rawValue };
+    } else {
+      setpoints.splice(Number(deleteIndex), 1);
+    }
+    const next = readSettingsFromForm();
+    next.setpoints = setpoints;
+    await saveSettings(next);
+    showCalibrationMessage('Setpoints saved');
+  } catch (error) {
+    showCalibrationMessage(error.message);
+  }
+});

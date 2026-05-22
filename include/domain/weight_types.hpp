@@ -8,27 +8,52 @@
 
 namespace mixer::domain {
 
-// Калибровка, которая применяется сразу после чтения raw-значений АЦП. Это
-// простой тип данных, чтобы NVS, Web и сэмплер обменивались одним контрактом
-// без зависимости от классов друг друга.
-struct CalibrationState {
-    std::array<int32_t, config::kLoadCellCount> offsets{};
-    std::array<float, config::kLoadCellCount> scales{};
-    float global_scale = config::kDefaultGlobalScale;
+inline constexpr std::size_t kMaxUnitConversions = 8;
+inline constexpr std::size_t kUnitNameMaxLength = 5;
+inline constexpr std::size_t kMaxSetpoints = 16;
+inline constexpr std::size_t kSetpointNameMaxLength = 24;
+
+// Условная единица для рабочего пересчета raw/MA в "попугаи": лопата, ведро,
+// условный кг и другие короткие единицы, которые удобнее реальных килограммов.
+struct UnitConversion {
+    bool enabled = false;
+    char name[kUnitNameMaxLength + 1]{};
+    float raw_per_unit = 1.0f;
 };
 
-// Один логический замер со всех включенных тензодатчиков. Raw-значения хранятся
-// рядом с откалиброванными весами каналов, чтобы Web и отладка показывали и
-// электрический сигнал, и значение, которое ушло в фильтрацию.
+// Уставка в raw/MA единицах. Это не рецепт, а сохраненная контрольная отметка,
+// с которой оператор сравнивает текущие MA/попугаи в контроллере и Web.
+struct Setpoint {
+    bool enabled = false;
+    char name[kSetpointNameMaxLength + 1]{};
+    int64_t raw_value = 0;
+};
+
+// Калибровка виртуального датчика. Отдельные HX711 каналы не калибруются как
+// рабочие веса: сначала складываем raw в raw_sum, потом применяем один offset и scale.
+struct CalibrationState {
+    int64_t sum_offset = config::kDefaultSumOffset;
+    float sum_scale = config::kDefaultSumScale;
+    std::array<UnitConversion, kMaxUnitConversions> units{};
+    uint8_t unit_count = 0;
+    std::array<Setpoint, kMaxSetpoints> setpoints{};
+    uint8_t setpoint_count = 0;
+};
+
+// Один логический замер виртуального датчика. Raw по отдельным HX711 живет только
+// во временном буфере чтения и не публикуется в состоянии.
 struct WeightSample {
     uint64_t sequence = 0;
     int64_t timestamp_us = 0;
-    std::array<int32_t, config::kLoadCellCount> raw{};
-    std::array<float, config::kLoadCellCount> channels{};
-    std::array<bool, config::kLoadCellCount> ready{};
+    int64_t raw_sum = 0;
+    int64_t clean_sum = 0;
+    int64_t sum_offset = config::kDefaultSumOffset;
+    float sum_scale = config::kDefaultSumScale;
     float total = 0.0f;
     float weight = 0.0f;
     bool valid = false;
+    bool clean_valid = false;
+    const char* reject_reason = "";
 };
 
 // Один именованный результат обработки того же замера. Несколько фильтров могут
@@ -36,12 +61,13 @@ struct WeightSample {
 // реализации алгоритма.
 struct FilterOutput {
     const char* name = "";
+    int64_t raw_sum = 0;
     float total = 0.0f;
     float weight = 0.0f;
     bool valid = false;
 };
 
-inline constexpr std::size_t kMaxFilterOutputs = 8;
+inline constexpr std::size_t kMaxFilterOutputs = 10;
 
 // Полное опубликованное состояние: последний физический замер и все результаты
 // фильтров. Этим объектом обмениваются процессор, индикация и Web.

@@ -1,5 +1,7 @@
 #include "settings/settings_store.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstring>
 
 #include "config/hardware_config.hpp"
@@ -14,7 +16,7 @@ namespace {
 constexpr char kTag[] = "settings";
 constexpr char kCalibrationNamespace[] = "calibration";
 constexpr char kCalibrationKey[] = "state";
-constexpr uint32_t kCalibrationVersion = 1;
+constexpr uint32_t kCalibrationVersion = 4;
 constexpr char kWifiNamespace[] = "wifi";
 constexpr char kWifiKey[] = "sta";
 constexpr uint32_t kWifiVersion = 1;
@@ -24,7 +26,6 @@ constexpr uint32_t kUdpVersion = 1;
 
 struct StoredCalibration {
     uint32_t version = kCalibrationVersion;
-    uint32_t channel_count = config::kLoadCellCount;
     domain::CalibrationState state{};
 };
 
@@ -37,6 +38,150 @@ struct StoredUdpTelemetry {
     uint32_t version = kUdpVersion;
     UdpTelemetrySettings settings{};
 };
+
+enum class BlobLoadStatus {
+    Missing,
+    Loaded,
+    SchemaMismatch,
+};
+
+bool isSchemaMismatch(esp_err_t err) {
+    return err == ESP_ERR_NVS_INVALID_LENGTH || err == ESP_ERR_NVS_TYPE_MISMATCH;
+}
+
+template <typename T>
+esp_err_t loadBlob(const char* namespace_name,
+                   const char* key,
+                   T& value,
+                   BlobLoadStatus& status,
+                   std::size_t& stored_size) {
+    status = BlobLoadStatus::Missing;
+    stored_size = 0;
+
+    nvs_handle_t handle = 0;
+    esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_get_blob(handle, key, nullptr, &stored_size);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(handle);
+        return ESP_OK;
+    }
+    if (isSchemaMismatch(err)) {
+        nvs_close(handle);
+        status = BlobLoadStatus::SchemaMismatch;
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
+
+    if (stored_size != sizeof(T)) {
+        nvs_close(handle);
+        status = BlobLoadStatus::SchemaMismatch;
+        return ESP_OK;
+    }
+
+    std::size_t read_size = sizeof(T);
+    err = nvs_get_blob(handle, key, &value, &read_size);
+    nvs_close(handle);
+
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK;
+    }
+    if (isSchemaMismatch(err)) {
+        status = BlobLoadStatus::SchemaMismatch;
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (read_size != sizeof(T)) {
+        status = BlobLoadStatus::SchemaMismatch;
+        stored_size = read_size;
+        return ESP_OK;
+    }
+
+    status = BlobLoadStatus::Loaded;
+    return ESP_OK;
+}
+
+void eraseBlobIfPresent(const char* namespace_name, const char* key, const char* label) {
+    nvs_handle_t handle = 0;
+    esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag, "failed to open %s for erase: %s", label, esp_err_to_name(err));
+        return;
+    }
+
+    err = nvs_erase_key(handle, key);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        nvs_close(handle);
+        return;
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+
+    if (err == ESP_OK) {
+        ESP_LOGW(kTag, "erased invalid %s NVS entry", label);
+    } else {
+        ESP_LOGW(kTag, "failed to erase invalid %s NVS entry: %s", label, esp_err_to_name(err));
+    }
+}
+
+domain::CalibrationState normalizeCalibration(const domain::CalibrationState& state) {
+    domain::CalibrationState normalized = state;
+    std::array<domain::UnitConversion, domain::kMaxUnitConversions> units{};
+    std::array<domain::Setpoint, domain::kMaxSetpoints> setpoints{};
+    uint8_t count = 0;
+
+    for (const domain::UnitConversion& unit : state.units) {
+        if (!unit.enabled || unit.name[0] == '\0' || unit.raw_per_unit <= 0.0f) {
+            continue;
+        }
+        if (count >= domain::kMaxUnitConversions) {
+            break;
+        }
+
+        domain::UnitConversion copy = unit;
+        copy.enabled = true;
+        copy.name[domain::kUnitNameMaxLength] = '\0';
+        units[count++] = copy;
+    }
+
+    normalized.units = units;
+    normalized.unit_count = count;
+
+    count = 0;
+    for (const domain::Setpoint& setpoint : state.setpoints) {
+        if (!setpoint.enabled || setpoint.name[0] == '\0') {
+            continue;
+        }
+        if (count >= domain::kMaxSetpoints) {
+            break;
+        }
+
+        domain::Setpoint copy = setpoint;
+        copy.enabled = true;
+        copy.name[domain::kSetpointNameMaxLength] = '\0';
+        setpoints[count++] = copy;
+    }
+
+    normalized.setpoints = setpoints;
+    normalized.setpoint_count = count;
+    return normalized;
+}
 
 }  // анонимное пространство имен
 
@@ -54,95 +199,78 @@ SettingsStore::~SettingsStore() {
 
 esp_err_t SettingsStore::load() {
     StoredCalibration stored{};
-    std::size_t size = sizeof(stored);
+    BlobLoadStatus status = BlobLoadStatus::Missing;
+    std::size_t stored_size = 0;
+    esp_err_t err = loadBlob(kCalibrationNamespace,
+                             kCalibrationKey,
+                             stored,
+                             status,
+                             stored_size);
+    if (err != ESP_OK) {
+        return err;
+    }
 
-    nvs_handle_t handle = 0;
-    esp_err_t err = nvs_open(kCalibrationNamespace, NVS_READONLY, &handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
+    if (status == BlobLoadStatus::Missing) {
         ESP_LOGI(kTag, "calibration not found, using defaults");
         setCalibration(defaultCalibration());
-    } else if (err != ESP_OK) {
-        return err;
+    } else if (status == BlobLoadStatus::Loaded &&
+               stored.version == kCalibrationVersion) {
+        setCalibration(stored.state);
     } else {
-        err = nvs_get_blob(handle, kCalibrationKey, &stored, &size);
-        nvs_close(handle);
-
-        if (err == ESP_ERR_NVS_NOT_FOUND) {
-            ESP_LOGI(kTag, "calibration blob not found, using defaults");
-            setCalibration(defaultCalibration());
-        } else if (err != ESP_OK) {
-            return err;
-        } else if (size != sizeof(stored) || stored.version != kCalibrationVersion ||
-                   stored.channel_count != config::kLoadCellCount) {
-            ESP_LOGW(kTag, "calibration schema mismatch, using defaults");
-            setCalibration(defaultCalibration());
-        } else {
-            setCalibration(stored.state);
-        }
+        ESP_LOGW(kTag,
+                 "calibration schema mismatch, using defaults (stored=%u expected=%u)",
+                 static_cast<unsigned>(stored_size),
+                 static_cast<unsigned>(sizeof(stored)));
+        eraseBlobIfPresent(kCalibrationNamespace, kCalibrationKey, "calibration");
+        setCalibration(defaultCalibration());
     }
 
     StoredWifi stored_wifi{};
-    size = sizeof(stored_wifi);
-    err = nvs_open(kWifiNamespace, NVS_READONLY, &handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
+    status = BlobLoadStatus::Missing;
+    stored_size = 0;
+    err = loadBlob(kWifiNamespace, kWifiKey, stored_wifi, status, stored_size);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (status == BlobLoadStatus::Missing) {
         ESP_LOGI(kTag, "wifi credentials not found, using defaults");
         setWifiCredentials(defaultWifiCredentials());
-        setUdpTelemetry(defaultUdpTelemetry());
-        return ESP_OK;
-    }
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = nvs_get_blob(handle, kWifiKey, &stored_wifi, &size);
-    nvs_close(handle);
-
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGI(kTag, "wifi blob not found, using defaults");
+    } else if (status != BlobLoadStatus::Loaded ||
+               stored_wifi.version != kWifiVersion) {
+        ESP_LOGW(kTag,
+                 "wifi schema mismatch, using defaults (stored=%u expected=%u)",
+                 static_cast<unsigned>(stored_size),
+                 static_cast<unsigned>(sizeof(stored_wifi)));
+        eraseBlobIfPresent(kWifiNamespace, kWifiKey, "wifi");
         setWifiCredentials(defaultWifiCredentials());
-        return ESP_OK;
+    } else {
+        setWifiCredentials(stored_wifi.credentials);
     }
-    if (err != ESP_OK) {
-        return err;
-    }
-    if (size != sizeof(stored_wifi) || stored_wifi.version != kWifiVersion) {
-        ESP_LOGW(kTag, "wifi schema mismatch, using defaults");
-        setWifiCredentials(defaultWifiCredentials());
-        return ESP_OK;
-    }
-
-    setWifiCredentials(stored_wifi.credentials);
 
     StoredUdpTelemetry stored_udp{};
-    size = sizeof(stored_udp);
-    err = nvs_open(kUdpNamespace, NVS_READONLY, &handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
+    status = BlobLoadStatus::Missing;
+    stored_size = 0;
+    err = loadBlob(kUdpNamespace, kUdpKey, stored_udp, status, stored_size);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (status == BlobLoadStatus::Missing) {
         ESP_LOGI(kTag, "UDP telemetry settings not found, using defaults");
         setUdpTelemetry(defaultUdpTelemetry());
-        return ESP_OK;
-    }
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = nvs_get_blob(handle, kUdpKey, &stored_udp, &size);
-    nvs_close(handle);
-
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGI(kTag, "UDP telemetry blob not found, using defaults");
+    } else if (status != BlobLoadStatus::Loaded ||
+               stored_udp.version != kUdpVersion) {
+        ESP_LOGW(kTag,
+                 "UDP telemetry schema mismatch, using defaults (stored=%u expected=%u)",
+                 static_cast<unsigned>(stored_size),
+                 static_cast<unsigned>(sizeof(stored_udp)));
+        eraseBlobIfPresent(kUdpNamespace, kUdpKey, "UDP telemetry");
         setUdpTelemetry(defaultUdpTelemetry());
-        return ESP_OK;
-    }
-    if (err != ESP_OK) {
-        return err;
-    }
-    if (size != sizeof(stored_udp) || stored_udp.version != kUdpVersion) {
-        ESP_LOGW(kTag, "UDP telemetry schema mismatch, using defaults");
-        setUdpTelemetry(defaultUdpTelemetry());
-        return ESP_OK;
+    } else {
+        setUdpTelemetry(stored_udp.settings);
     }
 
-    setUdpTelemetry(stored_udp.settings);
     return ESP_OK;
 }
 
@@ -153,17 +281,27 @@ esp_err_t SettingsStore::save(const domain::CalibrationState& state) {
         return err;
     }
 
+    const domain::CalibrationState normalized = normalizeCalibration(state);
     StoredCalibration stored{};
-    stored.state = state;
+    stored.state = normalized;
 
     err = nvs_set_blob(handle, kCalibrationKey, &stored, sizeof(stored));
+    if (err != ESP_OK) {
+        ESP_LOGW(kTag,
+                 "calibration set failed, erasing old entry and retrying: %s",
+                 esp_err_to_name(err));
+        const esp_err_t erase_err = nvs_erase_key(handle, kCalibrationKey);
+        if (erase_err == ESP_OK || erase_err == ESP_ERR_NVS_NOT_FOUND) {
+            err = nvs_set_blob(handle, kCalibrationKey, &stored, sizeof(stored));
+        }
+    }
     if (err == ESP_OK) {
         err = nvs_commit(handle);
     }
     nvs_close(handle);
 
     if (err == ESP_OK) {
-        setCalibration(state);
+        setCalibration(normalized);
     }
     return err;
 }
@@ -255,8 +393,9 @@ UdpTelemetrySettings SettingsStore::udpTelemetry() const {
 }
 
 void SettingsStore::setCalibration(const domain::CalibrationState& state) {
+    const domain::CalibrationState normalized = normalizeCalibration(state);
     if (mutex_ != nullptr && xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE) {
-        calibration_ = state;
+        calibration_ = normalized;
         xSemaphoreGive(mutex_);
     }
 }
@@ -296,11 +435,8 @@ void SettingsStore::setUdpTelemetry(const UdpTelemetrySettings& settings) {
 
 domain::CalibrationState SettingsStore::defaultCalibration() {
     domain::CalibrationState calibration{};
-    calibration.global_scale = config::kDefaultGlobalScale;
-    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
-        calibration.offsets[i] = config::kLoadCells[i].offset;
-        calibration.scales[i] = config::kLoadCells[i].scale;
-    }
+    calibration.sum_offset = config::kDefaultSumOffset;
+    calibration.sum_scale = config::kDefaultSumScale;
     return calibration;
 }
 

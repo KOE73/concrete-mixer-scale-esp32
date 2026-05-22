@@ -6,7 +6,7 @@
 HX711 -> LoadCellReader -> LoadCellSampler -> FreeRTOS queue
       -> WeightProcessor -> LatestWeightStore
       -> DisplayTask -> IDisplaySink -> Hub75DisplaySink
-      -> WebServer -> /api/weight -> www/app.js
+      -> WebServer -> /api/state.cbor -> www/app.js
 ```
 
 Настройки идут отдельным путем:
@@ -68,15 +68,15 @@ Web UI -> WebServer::updateWifi() -> SettingsStore::saveWifi() -> WifiManager::c
 2. берет текущую калибровку через `SettingsStore::calibration()`;
 3. вызывает `LoadCellReader::waitAllReady(config::kHx711ReadyTimeoutMs)`;
 4. фиксирует `timestamp_us`;
-5. вызывает `LoadCellReader::readRaw(sample.raw)`;
-6. для каждого активного канала применяет:
+5. вызывает `LoadCellReader::readRaw(raw_buffer)`;
+6. складывает физические raw входы в один `raw_sum`;
+7. применяет к сумме одну калибровку:
 
 ```text
-channel_weight = (raw - offset) * scale
+weight = (raw_sum - sumOffset) * sumScale
 ```
 
-7. суммирует каналы в `sample.total`;
-8. применяет `calibration.global_scale` в `sample.weight`.
+8. записывает тот же виртуальный результат в `sample.total` и `sample.weight`.
 
 Почему timestamp ставится после готовности HX711: так время ближе к моменту физического чтения, а не к началу ожидания готовности.
 
@@ -91,9 +91,7 @@ channel_weight = (raw - offset) * scale
 
 ```text
 LoadCellReader::readRawSequential()
-  -> Hx711Reader::readRaw(channel 0)
-  -> Hx711Reader::readRaw(channel 1)
-  -> Hx711Reader::readRaw(channel 2)
+  -> Hx711Reader::readRaw(input 0..N)
 ```
 
 Общий SCK:
@@ -106,7 +104,7 @@ LoadCellReader::readRaw()
      -> дополнительные gain импульсы
 ```
 
-Почему есть два режима: готовая библиотека проще и надежнее для запуска, но общий SCK нужен для более честного логического сэмпла с 3 HX711.
+Почему есть два режима: готовая библиотека проще и надежнее для запуска, но общий SCK нужен для более честного логического сэмпла с несколькими HX711.
 
 ## Сценарий обработки и публикации веса
 
@@ -172,20 +170,20 @@ LoadCellReader::readRaw()
 
 Почему HTML/CSS/JS вынесены из C++: Web UI легче менять, смотреть и расширять. C++ остается HTTP/API слоем, а не контейнером строк с HTML.
 
-## Сценарий чтения веса через Web
+## Сценарий чтения live-состояния через Web
 
 `www/app.js` каждые 500 мс вызывает:
 
 ```text
-GET /api/weight
+GET /api/state.cbor
 ```
 
-`WebServer::weightHandler()` перенаправляет запрос в `sendWeight()`.
+`WebServer::stateCborHandler()` перенаправляет запрос в `sendStateCbor()`.
 
-`WebServer::sendWeight()`:
+`WebServer::sendStateCbor()`:
 
 1. читает `LatestWeightStore::get()`;
-2. кладет в JSON `sequence`, `timestampUs`, `valid`, `total`, `weight`;
+2. кладет в CBOR `sequence`, `timestampUs`, `valid`, `cleanValid`, `rejectReason`, `rawSum`, `cleanSum`, `total`, `weight`;
 3. добавляет цель партии: stage, target, remaining, remainingShovels;
 4. добавляет массив каналов с raw и весом;
 5. добавляет массив фильтров.

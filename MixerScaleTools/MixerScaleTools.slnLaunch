@@ -1,0 +1,22 @@
+[
+    {
+        "Name": "Recorder + Analyzer",
+        "Projects": [
+            {
+                "Path": "MixerScale.UdpRecorder\\MixerScale.UdpRecorder.csproj",
+                "Action": "Start",
+                "DebugTarget": "MixerScale.UdpRecorder"
+            },
+            {
+                "Path": "MixerScale.Analyzer\\MixerScale.Analyzer.csproj",
+                "Action": "Start",
+                "DebugTarget": "MixerScale.Analyzer"
+            },
+            {
+                "Path": "MixerScale.Controller\\MixerScale.Controller.csproj",
+                "Action": "Start",
+                "DebugTarget": "MixerScale.Controller"
+            }
+        ]
+    }
+]

@@ -1,6 +1,6 @@
 #include "processing/weight_processor.hpp"
 
-#include <algorithm>
+#include <cstdlib>
 
 #include "config/hardware_config.hpp"
 #include "freertos/task.h"
@@ -38,7 +38,9 @@ WeightProcessor::WeightProcessor(QueueHandle_t input_queue, LatestWeightStore& l
     filters_[2] = &ma_3s_filter_;
     filters_[3] = &ma_5s_filter_;
     filters_[4] = &ma_10s_filter_;
-    filters_[5] = &exponential_filter_;
+    filters_[5] = &ma_30s_filter_;
+    filters_[6] = &ma_60s_filter_;
+    filters_[7] = &exponential_filter_;
 }
 
 esp_err_t WeightProcessor::start() {
@@ -73,68 +75,47 @@ void WeightProcessor::run() {
     }
 }
 
-float AnomalyPreFilter::median5(std::array<float, AnomalyPreFilter::kWindow> values) {
-    std::sort(values.begin(), values.end());
-    return values[kCenter];
-}
-
-domain::WeightSample AnomalyPreFilter::process(const domain::WeightSample& sample) {
-    if (!config::kAnomalyFilterEnabled || !sample.valid) {
-        return sample;
-    }
-
+domain::WeightSample HardRejectFilter::process(const domain::WeightSample& sample) {
     domain::WeightSample out = sample;
-    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
-        if (!sample.ready[i]) {
-            continue;
-        }
+    out.clean_sum = sample.raw_sum;
+    out.clean_valid = false;
+    out.reject_reason = "";
 
-        // Сдвиг окна: старые значения уходят вправо, новое становится [0].
-        for (std::size_t j = kWindow - 1; j > 0; --j) {
-            buf_[i][j] = buf_[i][j - 1];
-        }
-        buf_[i][0] = sample.channels[i];
-
-        if (count_[i] < kWindow) {
-            ++count_[i];
-        }
-
-        if (count_[i] >= kWindow) {
-            out.channels[i] = median5(buf_[i]);
-        } else if (count_[i] > kCenter) {
-            // До заполнения полного окна уже можно держать постоянную задержку.
-            out.channels[i] = buf_[i][kCenter];
-        } else {
-            // В самом начале истории ещё нет центральной точки окна.
-            out.channels[i] = buf_[i][0];
-        }
+    if (!sample.valid) {
+        out.reject_reason = "sensor_error";
+        return out;
     }
 
-    // Пересчёт суммарного и откалиброванного веса из скорректированных каналов.
-    // Коэффициент global_scale восстанавливается из соотношения weight/total
-    // исходного сэмпла, чтобы не хранить ссылку на CalibrationState.
-    const float global_scale = (sample.total != 0.0f)
-        ? (sample.weight / sample.total)
-        : 1.0f;
-
-    out.total = 0.0f;
-    for (std::size_t i = 0; i < config::kLoadCellCount; ++i) {
-        if (sample.ready[i]) {
-            out.total += out.channels[i];
-        }
+    if (!config::kHardRejectEnabled || !has_last_good_) {
+        has_last_good_ = true;
+        last_good_clean_sum_ = sample.raw_sum;
+        out.clean_sum = sample.raw_sum;
+        out.clean_valid = true;
+        return out;
     }
-    out.weight = out.total * global_scale;
+
+    const int64_t delta = std::llabs(sample.raw_sum - last_good_clean_sum_);
+    if (delta > config::kHardRejectDeltaRawSum) {
+        out.clean_sum = last_good_clean_sum_;
+        out.clean_valid = false;
+        out.reject_reason = "hard_reject";
+        return out;
+    }
+
+    last_good_clean_sum_ = sample.raw_sum;
+    out.clean_sum = sample.raw_sum;
+    out.clean_valid = true;
     return out;
 }
 
-void AnomalyPreFilter::reset() {
-    buf_ = {};
-    count_ = {};
+void HardRejectFilter::reset() {
+    has_last_good_ = false;
+    last_good_clean_sum_ = 0;
 }
 
 domain::WeightState WeightProcessor::process(const domain::WeightSample& sample) {
     domain::WeightState state{};
-    domain::WeightSample filtered_sample = anomaly_filter_.process(sample);
+    domain::WeightSample filtered_sample = hard_reject_filter_.process(sample);
     state.sample = filtered_sample;
     for (std::size_t i = 0; i < filters_.size(); ++i) {
         if (filters_[i] == nullptr) {

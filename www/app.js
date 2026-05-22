@@ -1,16 +1,12 @@
 async function tick() {
-  const response = await fetch('/api/weight');
-  const data = await response.json();
-  const primary = data.filters.find((item) => item.name === 'moving_average') || data.filters[0];
+  const data = await window.MixerScaleCbor.fetchState();
+  const primary = data.ma.find((item) => item.name === 'ma_3s') || data.ma.find((item) => item.name.startsWith('ma_')) || data.ma[0];
 
   document.getElementById('weight').textContent =
     primary && primary.valid ? primary.weight.toFixed(2) : '--';
   document.getElementById('stage').textContent = data.target.stage;
   document.getElementById('remaining').textContent = data.target.remaining.toFixed(2);
   document.getElementById('shovels').textContent = data.target.remainingShovels.toFixed(1);
-  document.getElementById('channels').innerHTML = data.channels.map((channel) =>
-    `<tr><td>${channel.name}</td><td>${channel.raw}</td><td>${channel.weight.toFixed(2)}</td></tr>`
-  ).join('');
 }
 
 async function loadWifi() {

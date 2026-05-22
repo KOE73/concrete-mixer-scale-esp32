@@ -2,6 +2,8 @@
 
 #include "config/hardware_config.hpp"
 
+#include <algorithm>
+
 #include "esp_log.h"
 #include "esp_timer.h" // Добавлено для точного замера времени отрисовки (esp_timer_get_time)
 #include "freertos/FreeRTOS.h"
@@ -46,8 +48,10 @@ void LogDisplaySink::render(const DisplayFrame& frame) {
  * @param latest Ссылка на подсистему хранения последнего валидного веса (хранилище обработанных данных).
  * @param sink Ссылка на абстрактный интерфейс вывода (реализация HUB75, LCD или просто лог).
  */
-DisplayTask::DisplayTask(processing::LatestWeightStore& latest, IDisplaySink& sink)
-    : latest_(latest), sink_(sink) {}
+DisplayTask::DisplayTask(processing::LatestWeightStore& latest,
+                         settings::SettingsStore& settings,
+                         IDisplaySink& sink)
+    : latest_(latest), settings_(settings), sink_(sink) {}
 
 /**
  * @brief Запускает задачу дисплея как отдельный поток FreeRTOS.
@@ -103,6 +107,7 @@ void DisplayTask::run() {
         // Это атомарная операция (Thread-safe). Мы получаем последний обработанный вес, 
         // не блокируя и не опрашивая датчики (HX711) напрямую, что соответствует правилу разделения.
         const domain::WeightState state = latest_.get();
+        const domain::CalibrationState calibration = settings_.calibration();
         
         // Выбираем основной результат фильтра для вывода на экран.
         // Если в конфигурации больше 1 фильтра (например, сырой и скользящее среднее), 
@@ -117,6 +122,10 @@ void DisplayTask::run() {
         // stage_name: Название текущей стадии замеса (например, "Цемент" или "Песок").
         // Сейчас берется из конфигурации, но в будущем должно предоставляться подсистемой управления рецептами.
         frame.stage_name = config::kDefaultBatchStageName;
+
+        // raw_sum нужен экрану для сравнения с уставками: уставки хранятся в
+        // raw/MA единицах, поэтому индикаторы не должны пересчитывать их в kg.
+        frame.raw_sum = primary.raw_sum;
         
         // weight: Текущий сглаженный вес из primary фильтра.
         frame.weight = primary.weight;
@@ -133,9 +142,6 @@ void DisplayTask::run() {
             config::kDefaultShovelWeight > 0.0f
                 ? frame.remaining_weight / config::kDefaultShovelWeight
                 : 0.0f;
-        frame.channel_weights = state.sample.channels;
-        frame.channel_ready = state.sample.ready;
-                
         // diagnostic_tick: Счетчик для анимаций (например, для класса Spinner).
         // Увеличивается на каждом кадре, независимо от состояния датчика.
         frame.diagnostic_tick = diagnostic_tick++;
@@ -143,6 +149,23 @@ void DisplayTask::run() {
         // valid: Флаг корректности данных. Если датчик отвалился или еще не откалиброван,
         // этот флаг будет false, и UI должен отрисовать состояние ошибки или ожидания.
         frame.valid = primary.valid;
+
+        for (std::size_t i = 0;
+             i < calibration.setpoint_count && frame.setpoint_count < frame.setpoints.size();
+             ++i) {
+            const domain::Setpoint& setpoint = calibration.setpoints[i];
+            if (!setpoint.enabled || setpoint.name[0] == '\0') {
+                continue;
+            }
+
+            frame.setpoints[frame.setpoint_count++] = {setpoint.name, setpoint.raw_value};
+        }
+
+        std::sort(frame.setpoints.begin(),
+                  frame.setpoints.begin() + frame.setpoint_count,
+                  [](const DisplayFrame::Setpoint& left, const DisplayFrame::Setpoint& right) {
+                      return left.raw_value < right.raw_value;
+                  });
 
         // Засекаем время начала рендеринга кадра (в микросекундах)
         int64_t start_time = esp_timer_get_time();

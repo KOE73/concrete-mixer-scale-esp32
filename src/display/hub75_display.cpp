@@ -11,6 +11,8 @@
 #include "esp_timer.h"
 
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -21,6 +23,37 @@ namespace mixer::display
     {
 
         constexpr char kTag[] = "hub75_display";
+
+#pragma region Разметка экрана уставок
+
+        // Главная вертикальная шкала: все уставки в overlay-режиме, каждый
+        // следующий диапазон снова заполняет колонку снизу вверх.
+        constexpr int kAllSetpointsX = 0;
+        constexpr int kAllSetpointsY = 0;
+        constexpr int kAllSetpointsWidth = 12;
+        constexpr int kAllSetpointsHeight = 64;
+
+        // Узкие шкалы отдельных уставок. На 64x64 помещается 6 штук:
+        // 12px общая шкала + 1px зазор + 6 * (6px шкала + 1px зазор) + spinner.
+        constexpr int kSingleSetpointStartX = 13;
+        constexpr int kSingleSetpointY = 0;
+        constexpr int kSingleSetpointWidth = 6;
+        constexpr int kSingleSetpointHeight = 64;
+        constexpr int kSingleSetpointGap = 1;
+        constexpr std::size_t kVisibleSingleSetpointCount = 6;
+
+        // Уставки хранятся в raw/MA, поэтому экранные диапазоны тоже строятся
+        // в raw. Эти проценты вынесены сюда, чтобы руками менять логику шкал.
+        constexpr float kPreviousSetpointBackoff = 0.10f;
+        constexpr float kSetpointOverrun = 0.10f;
+
+        // Диагностический spinner вынесен в угол и не перекрывает рабочие шкалы.
+        constexpr int kSpinnerX = 55;
+        constexpr int kSpinnerY = 55;
+        constexpr int kSpinnerWidth = 9;
+        constexpr int kSpinnerHeight = 9;
+
+#pragma endregion
 
 #pragma region Вспомогательные утилиты
         /**
@@ -57,6 +90,55 @@ namespace mixer::display
             green = 0;
             blue = static_cast<uint8_t>(255 - phase * 3);
         }
+
+        float asDisplayValue(int64_t value)
+        {
+            return static_cast<float>(value);
+        }
+
+        float rangeMinimumForAllSetpoints(const DisplayFrame &frame, std::size_t index)
+        {
+            if (index == 0)
+            {
+                return 0.0f;
+            }
+
+            const float previous = asDisplayValue(frame.setpoints[index - 1].raw_value);
+            return previous - std::fabs(previous) * kPreviousSetpointBackoff;
+        }
+
+        float rangeMinimumForSingleSetpoint(const DisplayFrame &frame, std::size_t index)
+        {
+            return index == 0 ? 0.0f : asDisplayValue(frame.setpoints[index - 1].raw_value);
+        }
+
+        float rangeMaximumForSetpoint(float setpoint)
+        {
+            const float maximum = setpoint + std::fabs(setpoint) * kSetpointOverrun;
+            return maximum > setpoint ? maximum : setpoint + 1.0f;
+        }
+
+        LinearIndicatorBase::Color rangeColor(std::size_t index)
+        {
+            constexpr std::array<LinearIndicatorBase::Color, 6> colors{{
+                {0, 90, 255},
+                {0, 210, 70},
+                {255, 210, 0},
+                {255, 90, 0},
+                {210, 0, 255},
+                {0, 220, 220},
+            }};
+            return colors[index % colors.size()];
+        }
+
+        LinearIndicatorBase::Color inactiveRangeColor(LinearIndicatorBase::Color color)
+        {
+            return {
+                static_cast<uint8_t>(color.r / 4),
+                static_cast<uint8_t>(color.g / 4),
+                static_cast<uint8_t>(color.b / 4),
+            };
+        }
 #pragma endregion
 
     } // анонимное пространство имен
@@ -70,7 +152,7 @@ namespace mixer::display
             diagnostic_spinner_.setRadarStyle();
             diagnostic_spinner_.setSpeedRpm(config::kHub75SpinnerSpeedRpm);
             diagnostic_spinner_.setTrailLength(180.0f);
-            configureIndicators();
+            configureStaticIndicatorLayout();
         }
 
 #pragma region Инициализация и запуск
@@ -163,7 +245,9 @@ namespace mixer::display
             if (renderStartupAnimation(frame.diagnostic_tick))
                 return;
 
-            drawChannelIndicators(frame);
+            configureIndicators(frame);
+            drawVirtualSensorIndicator(frame);
+            drawSingleSetpointIndicators(frame);
             drawSpinner();
         }
 #pragma endregion
@@ -231,111 +315,95 @@ namespace mixer::display
             });
         }
 
-        void configureIndicators()
+        void configureStaticIndicatorLayout()
         {
-            // Пока рецептов и распределения веса по опорам нет, каждому датчику
-            // даем одинаковую условную цель: общий целевой вес делится на число
-            // каналов. Это не бизнес-логика дозирования, а только стартовая шкала
-            // для визуального сравнения трех опор на HUB75.
-            constexpr float per_channel_target = config::kDefaultBatchTargetWeight /
-                                                 static_cast<float>(config::kLoadCellCount);
+            all_setpoints_indicator_.setFrame(true, {28, 28, 28});
+            all_setpoints_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
+            all_setpoints_indicator_.setDirection(LinearIndicatorBase::Direction::Vertical);
+            all_setpoints_indicator_.setCompressInactiveRanges(true);
 
-            // A1 / rear_left: базовый контрольный вариант. Одна синяя заливка и
-            // белая уставка показывают самый простой режим без цветовых зон.
-            rear_left_indicator_.setValueRange(0.0f, per_channel_target * 1.5f);
-            rear_left_indicator_.setFrame(true, {28, 28, 28});
-            rear_left_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
-            rear_left_indicator_.setColor({45, 120, 230});
-            rear_left_indicator_.addSetpoint(per_channel_target, {230, 230, 230});
-
-            // A2 / rear_right: сегментный вариант. Синий, зеленый и оранжевый
-            // диапазоны одновременно живут на одной общей шкале. Зеленая зона
-            // специально шире, чтобы "допуск" занимал больше пикселей и был
-            // заметнее на матрице 64x64.
-            rear_right_indicator_.setValueRange(0.0f, per_channel_target * 1.5f);
-            rear_right_indicator_.setFrame(true, {40, 40, 40});
-            rear_right_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::IncludeFrame);
-            rear_right_indicator_.addRange(0.0f, per_channel_target * 0.45f, {35, 90, 220});
-            rear_right_indicator_.addRange(per_channel_target * 0.45f,
-                                           per_channel_target * 1.15f,
-                                           {40, 180, 80});
-            rear_right_indicator_.addRange(per_channel_target * 1.15f,
-                                           per_channel_target * 1.5f,
-                                           {230, 120, 20});
-            rear_right_indicator_.addSetpoint(per_channel_target, {255, 255, 255});
-
-            // A3 / front_support: слойный вариант. Каждый следующий диапазон
-            // снова заполняет всю ширину шкалы от нуля и перекрывает предыдущий
-            // цвет. Так активный диапазон получает максимум пикселей, а уставки
-            // появляются только после входа значения в соответствующую область.
-            // color1 - активный цвет текущего слоя, color2 - приглушенный цвет
-            // уже пройденного слоя. Сжатие по высоте оставляет историю диапазона
-            // видимой, но освобождает визуальный вес для текущего слоя.
-            front_support_indicator_.setValueRange(0.0f, per_channel_target * 1.5f);
-            front_support_indicator_.setFrame(true, {28, 28, 28});
-            front_support_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
-            front_support_indicator_.setCompressInactiveRanges(true);
-            front_support_indicator_.addRange(0.0f,
-                                              per_channel_target * 0.35f,
-                                              {0, 0, 255},
-                                              {0,0, 70});
-            front_support_indicator_.addRange(per_channel_target * 0.35f,
-                                              per_channel_target * 1.2f,
-                                              {0, 255, 0},
-                                              {0, 70, 0});
-            front_support_indicator_.addRange(per_channel_target * 1.2f,
-                                              per_channel_target * 1.5f,
-                                              {255, 255, 0},
-                                              {255, 255, 0});
-            front_support_indicator_.addSetpoint(per_channel_target * 0.8f, {255, 255, 0});
-            front_support_indicator_.addSetpoint(per_channel_target, {255, 255, 255});
-            front_support_indicator_.addSetpoint(per_channel_target * 1.2f, {255, 255, 0});
-
-            // Отдельная вертикальная шкала нужна как проверка того, что общий
-            // виджет умеет работать не только слева направо, но и снизу вверх.
-            // Она показывает общий вес тем же overlay-принципом, а место под нее
-            // освобождено вместо старых боковых квадратиков готовности каналов.
-            total_vertical_indicator_.setValueRange(0.0f, config::kDefaultBatchTargetWeight * 1.5f);
-            total_vertical_indicator_.setFrame(true, {28, 28, 28});
-            total_vertical_indicator_.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
-            total_vertical_indicator_.setDirection(LinearIndicatorBase::Direction::Vertical);
-            total_vertical_indicator_.setCompressInactiveRanges(true);
-            total_vertical_indicator_.addRange(0.0f,
-                                               config::kDefaultBatchTargetWeight * 0.35f,
-                                               {0, 0, 255},
-                                               {0, 0, 70});
-            total_vertical_indicator_.addRange(config::kDefaultBatchTargetWeight * 0.35f,
-                                               config::kDefaultBatchTargetWeight * 1.2f,
-                                               {0, 255, 0},
-                                               {0, 70, 0});
-            total_vertical_indicator_.addRange(config::kDefaultBatchTargetWeight * 1.2f,
-                                               config::kDefaultBatchTargetWeight * 1.5f,
-                                               {255, 255, 0},
-                                               {255, 255, 0});
-            total_vertical_indicator_.addSetpoint(config::kDefaultBatchTargetWeight, {255, 255, 255});
+            for (SolidLinearIndicator &indicator : single_setpoint_indicators_)
+            {
+                indicator.setFrame(true, {24, 24, 24});
+                indicator.setFillBounds(LinearIndicatorBase::FillBounds::InsideFrame);
+                indicator.setDirection(LinearIndicatorBase::Direction::Vertical);
+                indicator.setColor({0, 150, 255});
+            }
         }
 
-        void drawChannelIndicators(const DisplayFrame &frame)
+        void configureIndicators(const DisplayFrame &frame)
         {
-            const std::array<LinearIndicatorBase*, config::kLoadCellCount> indicators{
-                &rear_left_indicator_,
-                &rear_right_indicator_,
-                &front_support_indicator_,
-            };
+            configureAllSetpointsIndicator(frame);
+            configureSingleSetpointIndicators(frame);
+        }
 
-            total_vertical_indicator_.draw(
-                frame.valid ? frame.weight : 0.0f,
+        void configureAllSetpointsIndicator(const DisplayFrame &frame)
+        {
+            all_setpoints_indicator_.clearRanges();
+            all_setpoints_indicator_.clearSetpoints();
+
+            if (frame.setpoint_count == 0)
+            {
+                all_setpoints_indicator_.setValueRange(0.0f, 1.0f);
+                all_setpoints_indicator_.addRange(0.0f, 1.0f, {20, 20, 20}, {8, 8, 8});
+                return;
+            }
+
+            const float first_minimum = rangeMinimumForAllSetpoints(frame, 0);
+            const float last_setpoint = asDisplayValue(frame.setpoints[frame.setpoint_count - 1].raw_value);
+            all_setpoints_indicator_.setValueRange(first_minimum, rangeMaximumForSetpoint(last_setpoint));
+
+            for (std::size_t i = 0; i < frame.setpoint_count; ++i)
+            {
+                const float setpoint = asDisplayValue(frame.setpoints[i].raw_value);
+                const float from = rangeMinimumForAllSetpoints(frame, i);
+                const float to = rangeMaximumForSetpoint(setpoint);
+                const LinearIndicatorBase::Color color = rangeColor(i);
+                all_setpoints_indicator_.addRange(from, to, color, inactiveRangeColor(color));
+                all_setpoints_indicator_.addSetpoint(setpoint, {255, 255, 255});
+            }
+        }
+
+        void configureSingleSetpointIndicators(const DisplayFrame &frame)
+        {
+            for (std::size_t i = 0; i < single_setpoint_indicators_.size(); ++i)
+            {
+                SolidLinearIndicator &indicator = single_setpoint_indicators_[i];
+                indicator.clearSetpoints();
+                indicator.setColor(i < frame.setpoint_count ? rangeColor(i) : LinearIndicatorBase::Color{12, 12, 12});
+
+                if (i >= frame.setpoint_count)
+                {
+                    indicator.setValueRange(0.0f, 1.0f);
+                    continue;
+                }
+
+                const float setpoint = asDisplayValue(frame.setpoints[i].raw_value);
+                indicator.setValueRange(rangeMinimumForSingleSetpoint(frame, i),
+                                        rangeMaximumForSetpoint(setpoint));
+                indicator.addSetpoint(setpoint, {255, 255, 255});
+            }
+        }
+
+        void drawVirtualSensorIndicator(const DisplayFrame &frame)
+        {
+            all_setpoints_indicator_.draw(
+                frame.valid ? asDisplayValue(frame.raw_sum) : 0.0f,
                 [this](int x, int y, int width, int height, LinearIndicatorBase::Color color) {
                     matrix_->fillRect(x, y, width, height, color.r, color.g, color.b);
                 },
                 [this](int x, int y, LinearIndicatorBase::Color color) {
                     matrix_->drawPixelRGB888(x, y, color.r, color.g, color.b);
                 });
+        }
 
-            for (std::size_t i = 0; i < config::kLoadCellCount; ++i)
+        void drawSingleSetpointIndicators(const DisplayFrame &frame)
+        {
+            const float value = frame.valid ? asDisplayValue(frame.raw_sum) : 0.0f;
+            for (SolidLinearIndicator &indicator : single_setpoint_indicators_)
             {
-                indicators[i]->draw(
-                    frame.valid ? frame.channel_weights[i] : 0.0f,
+                indicator.draw(
+                    value,
                     [this](int x, int y, int width, int height, LinearIndicatorBase::Color color) {
                         matrix_->fillRect(x, y, width, height, color.r, color.g, color.b);
                     },
@@ -349,11 +417,38 @@ namespace mixer::display
         std::unique_ptr<MatrixPanel_I2S_DMA> matrix_{};
         int64_t startup_animation_until_us_ = 0;
         
-        Spinner diagnostic_spinner_{1, 1, 9, 9};
-        SolidLinearIndicator rear_left_indicator_{14, 12, 48, 10};
-        SegmentedLinearIndicator rear_right_indicator_{14, 28, 48, 10};
-        OverlayLinearIndicator front_support_indicator_{14, 44, 48, 10};
-        OverlayLinearIndicator total_vertical_indicator_{4, 12, 6, 42};
+        Spinner diagnostic_spinner_{kSpinnerX, kSpinnerY, kSpinnerWidth, kSpinnerHeight};
+        OverlayLinearIndicator all_setpoints_indicator_{
+            kAllSetpointsX,
+            kAllSetpointsY,
+            kAllSetpointsWidth,
+            kAllSetpointsHeight};
+        std::array<SolidLinearIndicator, kVisibleSingleSetpointCount> single_setpoint_indicators_{{
+            SolidLinearIndicator{kSingleSetpointStartX + 0 * (kSingleSetpointWidth + kSingleSetpointGap),
+                                 kSingleSetpointY,
+                                 kSingleSetpointWidth,
+                                 kSingleSetpointHeight},
+            SolidLinearIndicator{kSingleSetpointStartX + 1 * (kSingleSetpointWidth + kSingleSetpointGap),
+                                 kSingleSetpointY,
+                                 kSingleSetpointWidth,
+                                 kSingleSetpointHeight},
+            SolidLinearIndicator{kSingleSetpointStartX + 2 * (kSingleSetpointWidth + kSingleSetpointGap),
+                                 kSingleSetpointY,
+                                 kSingleSetpointWidth,
+                                 kSingleSetpointHeight},
+            SolidLinearIndicator{kSingleSetpointStartX + 3 * (kSingleSetpointWidth + kSingleSetpointGap),
+                                 kSingleSetpointY,
+                                 kSingleSetpointWidth,
+                                 kSingleSetpointHeight},
+            SolidLinearIndicator{kSingleSetpointStartX + 4 * (kSingleSetpointWidth + kSingleSetpointGap),
+                                 kSingleSetpointY,
+                                 kSingleSetpointWidth,
+                                 kSingleSetpointHeight},
+            SolidLinearIndicator{kSingleSetpointStartX + 5 * (kSingleSetpointWidth + kSingleSetpointGap),
+                                 kSingleSetpointY,
+                                 kSingleSetpointWidth,
+                                 kSingleSetpointHeight},
+        }};
     };
 
 #pragma region Внешний интерфейс Hub75DisplaySink

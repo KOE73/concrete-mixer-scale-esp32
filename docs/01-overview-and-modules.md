@@ -27,8 +27,8 @@
 
 `include/domain/weight_types.hpp`
 
-- `CalibrationState` хранит offset/scale по каждому HX711 каналу и общий множитель. Его используют `SettingsStore`, `LoadCellSampler` и Web API, поэтому это простой DTO без логики.
-- `WeightSample` описывает один логический замер: `raw`, откалиброванные веса каналов, `total`, итоговый `weight`, `timestamp_us`, `sequence`, `valid`.
+- `CalibrationState` хранит один `sumOffset` и один `sumScale` для виртуального датчика.
+- `WeightSample` описывает один логический замер виртуального датчика: `raw_sum`, `clean_sum`, `total`, итоговый `weight`, `timestamp_us`, `sequence`, `valid`, `clean_valid`.
 - `FilterOutput` описывает результат одного фильтра. Несколько фильтров могут работать параллельно над одним сэмплом.
 - `WeightState` объединяет последний физический сэмпл и массив результатов фильтров. Это состояние читает и дисплей, и Web.
 
@@ -38,7 +38,7 @@
 
 `include/config/hardware_config.hpp`
 
-- `Hx711ChannelConfig` описывает физический канал: имя, DOUT, SCK, gain, offset, scale, enabled.
+- `Hx711ChannelConfig` описывает только физический вход HX711: имя, DOUT, SCK, gain, enabled.
 - `kLoadCells` задает список тензодатчиков. Сейчас массив на 3 канала, но остальной код берет размер через `kLoadCellCount`.
 - `Hx711ReadDriver` выбирает способ чтения: `EspIdfLibSequential` или `SharedClockBus`.
 - `DisplayDriver` выбирает приемник индикации: `Hub75` или `Log`.
@@ -81,7 +81,7 @@
 `include/measurement/load_cell_sampler.hpp`, `src/measurement/load_cell_sampler.cpp`
 
 - `LoadCellSampler::run()` периодически вызывает `readSample()` и отправляет `WeightSample` в очередь.
-- `LoadCellSampler::readSample()` берет калибровку из `SettingsStore::calibration()`, ждет готовность HX711, читает raw, применяет offset/scale/global scale.
+- `LoadCellSampler::readSample()` берет калибровку из `SettingsStore::calibration()`, ждет готовность HX711, складывает физические raw в `raw_sum` и применяет один `sumOffset/sumScale`.
 
 Почему так: калибровка применяется сразу после raw-чтения, чтобы дальше по системе шел уже нормализованный вес.
 
@@ -132,7 +132,7 @@
 
 `include/web/web_server.hpp`, `src/web/web_server.cpp`
 
-- `WebServer::sendWeight()` отдает `/api/weight`.
+- `WebServer::sendStateCbor()` отдает live-состояние через `/api/state.cbor`.
 - `WebServer::sendSettings()` и `updateSettings()` читают/пишут калибровку.
 - `WebServer::sendWifi()` и `updateWifi()` читают/пишут Wi-Fi настройки и вызывают `WifiManager::connect()`.
 - `WebServer::sendStaticFile()` раздает файлы из SPIFFS.
