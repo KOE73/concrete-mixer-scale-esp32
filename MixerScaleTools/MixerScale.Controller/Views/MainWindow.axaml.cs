@@ -36,18 +36,16 @@ internal sealed partial class MainWindow : Window
     ];
 
     private const string BaseUnitKey = "base";
+    private TextBlock _titleTextBlock = null!;
     private TextBlock _endpointText = null!;
-    private Border _connectionDot = null!;
-    private TextBlock _connectionText = null!;
-    private Button _refreshButton = null!;
     private TextBlock _sequenceText = null!;
     private TextBlock _rawSumText = null!;
     private TextBlock _cleanSumText = null!;
     private TextBlock _primaryMaText = null!;
     private TextBlock _sampleStateText = null!;
     private ContentControl _filtersTableHost = null!;
-    private TextBlock _wifiText = null!;
-    private TextBlock _udpText = null!;
+    private TextBlock _headerWifiText = null!;
+    private TextBlock _headerUdpText = null!;
     private TextBlock _settingsText = null!;
     private TextBox _sumOffsetInput = null!;
     private TextBox _sumScaleInput = null!;
@@ -74,6 +72,11 @@ internal sealed partial class MainWindow : Window
     private ulong? _lastGraphSequence;
     private bool _refreshing;
     private bool _settingsEditorActive;
+    private bool _statusLoaded;
+    private ApiCallResult<LiveWeightState>? _lastWeightResult;
+    private ApiCallResult<WifiState>? _lastWifiResult;
+    private ApiCallResult<DeviceSettingsState>? _lastSettingsResult;
+    private ApiCallResult<UdpTelemetryState>? _lastUdpResult;
 
     public MainWindow()
     {
@@ -83,7 +86,6 @@ internal sealed partial class MainWindow : Window
         FindControls();
 
         _endpointText.Text = _settings.DeviceBaseUrl;
-        _refreshButton.Click += async (_, _) => await RefreshAsync();
         _zeroButton.Click += async (_, _) => await ZeroAsync();
         _saveCalibrationButton.Click += async (_, _) => await SaveCalibrationAsync();
         _addUnitButton.Click += async (_, _) => await AddUnitAsync();
@@ -98,7 +100,7 @@ internal sealed partial class MainWindow : Window
 
         _pollTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(Math.Max(250, _settings.PollIntervalMs))
+            Interval = TimeSpan.FromMilliseconds(Math.Max(500, _settings.PollIntervalMs))
         };
         _pollTimer.Tick += async (_, _) => await RefreshAsync();
         _pollTimer.Start();
@@ -120,18 +122,16 @@ internal sealed partial class MainWindow : Window
 
     private void FindControls()
     {
+        _titleTextBlock = this.FindControl<TextBlock>("TitleTextBlock") ?? throw Missing(nameof(_titleTextBlock));
         _endpointText = this.FindControl<TextBlock>("EndpointText") ?? throw Missing(nameof(_endpointText));
-        _connectionDot = this.FindControl<Border>("ConnectionDot") ?? throw Missing(nameof(_connectionDot));
-        _connectionText = this.FindControl<TextBlock>("ConnectionText") ?? throw Missing(nameof(_connectionText));
-        _refreshButton = this.FindControl<Button>("RefreshButton") ?? throw Missing(nameof(_refreshButton));
         _sequenceText = this.FindControl<TextBlock>("SequenceText") ?? throw Missing(nameof(_sequenceText));
         _rawSumText = this.FindControl<TextBlock>("RawSumText") ?? throw Missing(nameof(_rawSumText));
         _cleanSumText = this.FindControl<TextBlock>("CleanSumText") ?? throw Missing(nameof(_cleanSumText));
         _primaryMaText = this.FindControl<TextBlock>("PrimaryMaText") ?? throw Missing(nameof(_primaryMaText));
         _sampleStateText = this.FindControl<TextBlock>("SampleStateText") ?? throw Missing(nameof(_sampleStateText));
         _filtersTableHost = this.FindControl<ContentControl>("FiltersTableHost") ?? throw Missing(nameof(_filtersTableHost));
-        _wifiText = this.FindControl<TextBlock>("WifiText") ?? throw Missing(nameof(_wifiText));
-        _udpText = this.FindControl<TextBlock>("UdpText") ?? throw Missing(nameof(_udpText));
+        _headerWifiText = this.FindControl<TextBlock>("HeaderWifiText") ?? throw Missing(nameof(_headerWifiText));
+        _headerUdpText = this.FindControl<TextBlock>("HeaderUdpText") ?? throw Missing(nameof(_headerUdpText));
         _settingsText = this.FindControl<TextBlock>("SettingsText") ?? throw Missing(nameof(_settingsText));
         _sumOffsetInput = this.FindControl<TextBox>("SumOffsetInput") ?? throw Missing(nameof(_sumOffsetInput));
         _sumScaleInput = this.FindControl<TextBox>("SumScaleInput") ?? throw Missing(nameof(_sumScaleInput));
@@ -166,37 +166,47 @@ internal sealed partial class MainWindow : Window
         }
 
         _refreshing = true;
-        _refreshButton.IsEnabled = false;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_settings.RequestTimeoutMs * 6));
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_settings.RequestTimeoutMs));
 
             var weight = await _apiClient.GetStateAsync(cts.Token);
+            _lastWeightResult = weight;
             RenderWeight(weight);
             RenderConnection(weight.Success, weight.Error);
 
-            var wifi = await _apiClient.GetWifiAsync(cts.Token);
-            RenderWifi(wifi);
+            if (weight.Success && !_statusLoaded)
+            {
+                using var wifiCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_settings.RequestTimeoutMs));
+                _lastWifiResult = await _apiClient.GetWifiAsync(wifiCts.Token);
+                RenderWifi(_lastWifiResult);
 
-            var deviceSettings = await _apiClient.GetSettingsAsync(cts.Token);
-            RenderSettings(deviceSettings);
+                using var settingsCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_settings.RequestTimeoutMs));
+                _lastSettingsResult = await _apiClient.GetSettingsAsync(settingsCts.Token);
+                RenderSettings(_lastSettingsResult);
 
-            var udp = await _apiClient.GetUdpTelemetryAsync(cts.Token);
-            RenderUdp(udp);
+                using var udpCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_settings.RequestTimeoutMs));
+                _lastUdpResult = await _apiClient.GetUdpTelemetryAsync(udpCts.Token);
+                RenderUdp(_lastUdpResult);
 
-            RenderApiStatus(weight, wifi, deviceSettings, udp);
+                if (_lastWifiResult.Success && _lastSettingsResult.Success && _lastUdpResult.Success)
+                {
+                    _statusLoaded = true;
+                }
+            }
+
+            RenderApiStatus(weight);
         }
         finally
         {
-            _refreshButton.IsEnabled = true;
             _refreshing = false;
         }
     }
 
     private void RenderConnection(bool online, string error)
     {
-        _connectionDot.Background = online ? _onlineBrush : _offlineBrush;
-        _connectionText.Text = online ? "связь есть" : $"нет связи: {Short(error)}";
+        _titleTextBlock.Foreground = online ? _onlineBrush : _offlineBrush;
+        ToolTip.SetTip(_titleTextBlock, online ? "Связь есть" : $"Нет связи: {Short(error)}");
     }
 
     private void RenderWeight(ApiCallResult<LiveWeightState> result)
@@ -248,15 +258,14 @@ internal sealed partial class MainWindow : Window
     {
         if (!result.Success || result.Value is null)
         {
-            _wifiText.Text = Short(result.Error);
+            _headerWifiText.Text = $"WiFi: {Short(result.Error)}";
             return;
         }
 
         var wifi = result.Value;
-        _wifiText.Text =
-            $"AP: {(wifi.Ap?.Started == true ? wifi.Ap.Ssid : "-")}  {wifi.Ap?.Mac}\n" +
-            $"STA: {(wifi.Sta?.Connected == true ? wifi.Sta.Ssid : "нет")}  {wifi.Sta?.Ip}\n" +
-            $"MAC: {wifi.Sta?.Mac}";
+        var ap = wifi.Ap?.Started == true ? wifi.Ap.Ssid : "-";
+        var sta = wifi.Sta?.Connected == true ? wifi.Sta.Ip : "нет STA";
+        _headerWifiText.Text = $"WiFi AP: {ap} | STA: {sta}";
     }
 
     private void RenderSettings(ApiCallResult<DeviceSettingsState> result, bool forceFormUpdate = false)
@@ -286,28 +295,21 @@ internal sealed partial class MainWindow : Window
     {
         if (!result.Success || result.Value is null)
         {
-            _udpText.Text = Short(result.Error);
+            _headerUdpText.Text = $"UDP: {Short(result.Error)}";
             return;
         }
 
         var udp = result.Value;
-        _udpText.Text =
-            $"scale_id: {udp.ScaleId}\n" +
-            $"state: {(udp.Enabled ? "enabled" : "disabled")}\n" +
-            $"target: {udp.TargetHost}:{udp.Port}";
+        _headerUdpText.Text = $"UDP: ID {udp.ScaleId} -> {udp.TargetHost}:{udp.Port} [{(udp.Enabled ? "ON" : "OFF")}]";
     }
 
-    private void RenderApiStatus(
-        ApiCallResult<LiveWeightState> weight,
-        ApiCallResult<WifiState> wifi,
-        ApiCallResult<DeviceSettingsState> settings,
-        ApiCallResult<UdpTelemetryState> udp)
+    private void RenderApiStatus(ApiCallResult<LiveWeightState> weight)
     {
         _apiStatusText.Text =
             $"GET /api/state.cbor      {Status(weight)}\n" +
-            $"GET /api/wifi            {Status(wifi)}\n" +
-            $"GET /api/settings        {Status(settings)}\n" +
-            $"GET /api/udp-telemetry   {Status(udp)}";
+            $"GET /api/wifi            {Status(_lastWifiResult)}\n" +
+            $"GET /api/settings        {Status(_lastSettingsResult)}\n" +
+            $"GET /api/udp-telemetry   {Status(_lastUdpResult)}";
     }
 
     private void RenderZeroSources()
@@ -780,14 +782,17 @@ internal sealed partial class MainWindow : Window
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(_settings.RequestTimeoutMs * 6));
             var result = await _apiClient.SaveSettingsAsync(settings, cts.Token);
+            _lastSettingsResult = result;
             if (!result.Success || result.Value is null)
             {
                 _calibrationStatusText.Text = Short(result.Error);
+                RenderApiStatus(_lastWeightResult ?? ApiCallResult<LiveWeightState>.Fail(result.Error, TimeSpan.Zero));
                 return;
             }
 
             RenderSettings(result, forceFormUpdate: true);
             _calibrationStatusText.Text = successMessage;
+            RenderApiStatus(_lastWeightResult ?? ApiCallResult<LiveWeightState>.Ok(_liveState ?? new LiveWeightState(), TimeSpan.Zero));
         }
         finally
         {
@@ -929,8 +934,12 @@ internal sealed partial class MainWindow : Window
             ? (setpoint.RawValue - (_deviceSettings?.SumOffset ?? 0)) * (_deviceSettings?.SumScale ?? 1.0)
             : (setpoint.RawValue - (_deviceSettings?.SumOffset ?? 0)) / column.Unit.RawPerUnit;
 
-    private static string Status<T>(ApiCallResult<T> result) =>
-        result.Success ? $"OK {result.Elapsed.TotalMilliseconds:0} ms" : $"ERR {Short(result.Error)}";
+    private static string Status<T>(ApiCallResult<T>? result) =>
+        result is null
+            ? "-"
+            : result.Success
+                ? $"OK {result.Elapsed.TotalMilliseconds:0} ms"
+                : $"ERR {Short(result.Error)}";
 
     private Control CreateUnitRow(UnitConversionState unit, int index)
     {

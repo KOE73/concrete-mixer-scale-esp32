@@ -8,10 +8,16 @@
 
 namespace mixer::settings {
 
-struct WifiCredentials {
-    bool configured = false;
+inline constexpr std::size_t kMaxWifiNetworks = 3;
+
+struct WifiNetwork {
     char ssid[33]{};
     char password[65]{};
+};
+
+struct WifiCredentials {
+    bool configured = false;
+    WifiNetwork networks[kMaxWifiNetworks]{};
 };
 
 struct UdpTelemetrySettings {
@@ -32,7 +38,7 @@ public:
 
     esp_err_t load();
     esp_err_t save(const domain::CalibrationState& state);
-    esp_err_t saveWifi(const WifiCredentials& credentials);
+    esp_err_t saveWifi(const char* ssid, const char* password);
     esp_err_t saveUdpTelemetry(const UdpTelemetrySettings& settings);
 
     domain::CalibrationState calibration() const;

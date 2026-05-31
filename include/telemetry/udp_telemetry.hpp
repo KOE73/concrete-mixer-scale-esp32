@@ -26,6 +26,7 @@ private:
     uint64_t last_sequence_ = 0;
     uint32_t send_failure_count_ = 0;
     uint32_t send_success_count_ = 0;
+    int last_send_errno_ = 0;
 };
 
 }  // namespace mixer::telemetry

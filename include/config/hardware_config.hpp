@@ -60,7 +60,7 @@ namespace mixer::config
     inline constexpr uint32_t kProcessorTaskStackBytes = 4096;
     inline constexpr uint32_t kSamplerTaskStackBytes = 4096;
     inline constexpr uint32_t kDisplayTaskStackBytes = 4096;
-    inline constexpr uint32_t kWebServerTaskStackBytes = 8192;
+    inline constexpr uint32_t kWebServerTaskStackBytes = 12288;
 
     inline constexpr uint32_t kDisplayRefreshPeriodMs = 500;
     inline constexpr uint32_t kMovingAverageMaxWindow = 600;

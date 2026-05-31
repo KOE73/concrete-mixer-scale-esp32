@@ -1,8 +1,10 @@
 #include "display/display.hpp"
 
 #include "config/hardware_config.hpp"
+#include "web/wifi_manager.hpp"
 
 #include <algorithm>
+#include <cstring>
 
 #include "esp_log.h"
 #include "esp_timer.h" // Добавлено для точного замера времени отрисовки (esp_timer_get_time)
@@ -13,6 +15,19 @@ namespace mixer::display {
 namespace {
 
 constexpr char kTag[] = "display";
+
+void formatIpForDisplay(char* dest, std::size_t max_len, const char* full_ip) {
+    if (full_ip == nullptr || full_ip[0] == '\0') {
+        dest[0] = '\0';
+        return;
+    }
+    if (std::strncmp(full_ip, "192.168.", 8) == 0) {
+        std::strncpy(dest, full_ip + 8, max_len - 1);
+    } else {
+        std::strncpy(dest, full_ip, max_len - 1);
+    }
+    dest[max_len - 1] = '\0';
+}
 
 }  // анонимное пространство имен
 
@@ -50,8 +65,9 @@ void LogDisplaySink::render(const DisplayFrame& frame) {
  */
 DisplayTask::DisplayTask(processing::LatestWeightStore& latest,
                          settings::SettingsStore& settings,
+                         web::WifiManager& wifi,
                          IDisplaySink& sink)
-    : latest_(latest), settings_(settings), sink_(sink) {}
+    : latest_(latest), settings_(settings), wifi_(wifi), sink_(sink) {}
 
 /**
  * @brief Запускает задачу дисплея как отдельный поток FreeRTOS.
@@ -149,6 +165,23 @@ void DisplayTask::run() {
         // valid: Флаг корректности данных. Если датчик отвалился или еще не откалиброван,
         // этот флаг будет false, и UI должен отрисовать состояние ошибки или ожидания.
         frame.valid = primary.valid;
+
+        // Заполняем информацию о Wi-Fi статусе для отображения на экране
+        const auto wifi_status = wifi_.status();
+        if (wifi_status.state == mixer::web::WifiState::Disabled) {
+            std::strcpy(frame.wifi_state_code, "DIS");
+            frame.wifi_ip[0] = '\0';
+        } else if (wifi_status.state == mixer::web::WifiState::StaSearch) {
+            std::strcpy(frame.wifi_state_code, "SCH");
+            frame.wifi_ip[0] = '\0';
+        } else if (wifi_status.state == mixer::web::WifiState::StaConnected) {
+            std::strcpy(frame.wifi_state_code, "STA");
+            formatIpForDisplay(frame.wifi_ip, sizeof(frame.wifi_ip), wifi_status.sta_ip);
+        } else if (wifi_status.state == mixer::web::WifiState::ApActive) {
+            std::strcpy(frame.wifi_state_code, "AP");
+            formatIpForDisplay(frame.wifi_ip, sizeof(frame.wifi_ip), "192.168.4.1");
+            frame.wifi_ap_has_clients = wifi_status.ap_has_clients;
+        }
 
         for (std::size_t i = 0;
              i < calibration.setpoint_count && frame.setpoint_count < frame.setpoints.size();

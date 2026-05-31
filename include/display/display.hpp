@@ -35,6 +35,9 @@ namespace mixer::display
         std::array<Setpoint, domain::kMaxSetpoints> setpoints{};
         std::size_t setpoint_count = 0;
         uint32_t diagnostic_tick = 0;
+        char wifi_state_code[4]{};
+        char wifi_ip[16]{};
+        bool wifi_ap_has_clients = false;
         bool valid = false;
     };
 
@@ -75,6 +78,12 @@ namespace mixer::display
         std::unique_ptr<Impl> impl_;
     };
 
+} // namespace mixer::display
+
+namespace mixer::web { class WifiManager; }
+
+namespace mixer::display {
+
     // Периодический рендерер, который превращает LatestWeightStore в DisplayFrame.
     // Он отделен от Web, чтобы визуальная индикация развивалась независимо.
     class DisplayTask
@@ -82,6 +91,7 @@ namespace mixer::display
     public:
         DisplayTask(processing::LatestWeightStore &latest,
                     settings::SettingsStore &settings,
+                    web::WifiManager &wifi,
                     IDisplaySink &sink);
 
         esp_err_t start();
@@ -92,6 +102,7 @@ namespace mixer::display
 
         processing::LatestWeightStore &latest_;
         settings::SettingsStore &settings_;
+        web::WifiManager &wifi_;
         IDisplaySink &sink_;
     };
 

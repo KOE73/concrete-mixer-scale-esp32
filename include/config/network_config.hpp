@@ -40,6 +40,6 @@ inline constexpr uint32_t kDefaultScaleId = 1;
 inline constexpr char kDefaultUdpTelemetryTargetHost[] = "255.255.255.255";
 inline constexpr uint16_t kDefaultUdpTelemetryPort = 4222;
 inline constexpr bool kDefaultUdpTelemetryEnabled = true;
-inline constexpr uint32_t kUdpTelemetryTaskStackBytes = 4096;
+inline constexpr uint32_t kUdpTelemetryTaskStackBytes = 6144;
 
 }  // пространство имен mixer::config

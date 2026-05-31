@@ -54,10 +54,10 @@ extern "C" void app_main() {
         mixer::config::kDisplayDriver == mixer::config::DisplayDriver::Hub75
             ? static_cast<mixer::display::IDisplaySink&>(hub75_display_sink)
             : static_cast<mixer::display::IDisplaySink&>(log_display_sink);
-    static mixer::display::DisplayTask display(latest, settings, display_sink);
-    static mixer::telemetry::UdpTelemetryTask udp_telemetry(latest, settings);
     static mixer::storage::WebAssets web_assets;
     static mixer::web::WifiManager wifi(settings);
+    static mixer::display::DisplayTask display(latest, settings, wifi, display_sink);
+    static mixer::telemetry::UdpTelemetryTask udp_telemetry(latest, settings);
     static mixer::web::WebServer web(latest, settings, web_assets, wifi);
 
     requireOk(sampler.initialize(), "sampler initialize");

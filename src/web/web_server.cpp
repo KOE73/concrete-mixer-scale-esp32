@@ -10,6 +10,7 @@
 #include "cJSON.h"
 #include "config/hardware_config.hpp"
 #include "esp_log.h"
+#include "esp_wifi.h"
 
 namespace mixer::web {
 namespace {
@@ -18,6 +19,7 @@ constexpr char kTag[] = "web";
 constexpr std::size_t kMaxPostBodyBytes = 4096;
 constexpr std::size_t kFileBufferSize = 1024;
 constexpr std::size_t kCborBufferSize = 2048;
+constexpr std::size_t kMaxUriHandlers = 12;
 
 using BodyBuffer = std::unique_ptr<char, decltype(&std::free)>;
 
@@ -86,6 +88,30 @@ esp_err_t readJsonBody(httpd_req_t* req, BodyBuffer& body) {
     return ESP_OK;
 }
 
+bool customUriMatcher(const char* template_uri, const char* uri, size_t uri_len) {
+    const char* path = uri;
+    if (std::strncmp(uri, "http://", 7) == 0) {
+        path = std::strchr(uri + 7, '/');
+    } else if (std::strncmp(uri, "https://", 8) == 0) {
+        path = std::strchr(uri + 8, '/');
+    }
+    
+    if (path == nullptr) {
+        path = "/";
+    }
+    
+    // В ESP-IDF при матчинге с query-параметрами (например, "/api/state.cbor?_=123")
+    // нужно обрезать query-параметры из пути перед сравнением с точным шаблоном.
+    char clean_path[128]{};
+    std::strncpy(clean_path, path, sizeof(clean_path) - 1);
+    char* query_start = std::strchr(clean_path, '?');
+    if (query_start != nullptr) {
+        *query_start = '\0';
+    }
+    
+    return httpd_uri_match_wildcard(template_uri, clean_path, std::strlen(clean_path));
+}
+
 }  // анонимное пространство имен
 
 WebServer::WebServer(processing::LatestWeightStore& latest,
@@ -102,68 +128,135 @@ esp_err_t WebServer::start() {
     http_config.lru_purge_enable = true;
     http_config.recv_wait_timeout = 2;
     http_config.send_wait_timeout = 2;
-    http_config.uri_match_fn = httpd_uri_match_wildcard;
+    http_config.max_uri_handlers = kMaxUriHandlers;
+    http_config.uri_match_fn = customUriMatcher;
 
     esp_err_t err = httpd_start(&server_, &http_config);
     if (err != ESP_OK) {
         return err;
     }
 
+    const auto registerUri = [this](const httpd_uri_t& uri) -> esp_err_t {
+        const esp_err_t err = httpd_register_uri_handler(server_, &uri);
+        if (err != ESP_OK) {
+            ESP_LOGE(kTag, "failed to register HTTP route %s: %s",
+                     uri.uri,
+                     esp_err_to_name(err));
+            httpd_stop(server_);
+            server_ = nullptr;
+        }
+        return err;
+    };
+
     httpd_uri_t state_cbor{};
     state_cbor.uri = "/api/state.cbor";
     state_cbor.method = HTTP_GET;
     state_cbor.handler = &WebServer::stateCborHandler;
     state_cbor.user_ctx = this;
-    httpd_register_uri_handler(server_, &state_cbor);
+    err = registerUri(state_cbor);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t settings_get{};
     settings_get.uri = "/api/settings";
     settings_get.method = HTTP_GET;
     settings_get.handler = &WebServer::settingsGetHandler;
     settings_get.user_ctx = this;
-    httpd_register_uri_handler(server_, &settings_get);
+    err = registerUri(settings_get);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t settings_post{};
     settings_post.uri = "/api/settings";
     settings_post.method = HTTP_POST;
     settings_post.handler = &WebServer::settingsPostHandler;
     settings_post.user_ctx = this;
-    httpd_register_uri_handler(server_, &settings_post);
+    err = registerUri(settings_post);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t wifi_get{};
     wifi_get.uri = "/api/wifi";
     wifi_get.method = HTTP_GET;
     wifi_get.handler = &WebServer::wifiGetHandler;
     wifi_get.user_ctx = this;
-    httpd_register_uri_handler(server_, &wifi_get);
+    err = registerUri(wifi_get);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t wifi_post{};
     wifi_post.uri = "/api/wifi";
     wifi_post.method = HTTP_POST;
     wifi_post.handler = &WebServer::wifiPostHandler;
     wifi_post.user_ctx = this;
-    httpd_register_uri_handler(server_, &wifi_post);
+    err = registerUri(wifi_post);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    httpd_uri_t wifi_scan{};
+    wifi_scan.uri = "/api/wifi-scan";
+    wifi_scan.method = HTTP_GET;
+    wifi_scan.handler = &WebServer::wifiScanHandler;
+    wifi_scan.user_ctx = this;
+    err = registerUri(wifi_scan);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t udp_get{};
     udp_get.uri = "/api/udp-telemetry";
     udp_get.method = HTTP_GET;
     udp_get.handler = &WebServer::udpTelemetryGetHandler;
     udp_get.user_ctx = this;
-    httpd_register_uri_handler(server_, &udp_get);
+    err = registerUri(udp_get);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t udp_post{};
     udp_post.uri = "/api/udp-telemetry";
     udp_post.method = HTTP_POST;
     udp_post.handler = &WebServer::udpTelemetryPostHandler;
     udp_post.user_ctx = this;
-    httpd_register_uri_handler(server_, &udp_post);
+    err = registerUri(udp_post);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    httpd_uri_t root_uri{};
+    root_uri.uri = "/";
+    root_uri.method = HTTP_GET;
+    root_uri.handler = &WebServer::staticFileHandler;
+    root_uri.user_ctx = this;
+    err = registerUri(root_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    httpd_uri_t index_uri{};
+    index_uri.uri = "/index.html";
+    index_uri.method = HTTP_GET;
+    index_uri.handler = &WebServer::staticFileHandler;
+    index_uri.user_ctx = this;
+    err = registerUri(index_uri);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     httpd_uri_t static_files{};
     static_files.uri = "/*";
     static_files.method = HTTP_GET;
     static_files.handler = &WebServer::staticFileHandler;
     static_files.user_ctx = this;
-    httpd_register_uri_handler(server_, &static_files);
+    err = registerUri(static_files);
+    if (err != ESP_OK) {
+        return err;
+    }
 
     ESP_LOGI(kTag, "HTTP server started");
     return ESP_OK;
@@ -198,6 +291,10 @@ esp_err_t WebServer::wifiGetHandler(httpd_req_t* req) {
 
 esp_err_t WebServer::wifiPostHandler(httpd_req_t* req) {
     return static_cast<WebServer*>(req->user_ctx)->updateWifi(req);
+}
+
+esp_err_t WebServer::wifiScanHandler(httpd_req_t* req) {
+    return static_cast<WebServer*>(req->user_ctx)->sendWifiScan(req);
 }
 
 class CborWriter {
@@ -486,10 +583,30 @@ esp_err_t WebServer::sendWifi(httpd_req_t* req) const {
     cJSON* sta = cJSON_AddObjectToObject(root, "sta");
     cJSON_AddBoolToObject(sta, "configured", credentials.configured);
     cJSON_AddBoolToObject(sta, "connected", status.sta_connected);
-    cJSON_AddStringToObject(sta, "ssid", credentials.ssid);
+    cJSON_AddStringToObject(sta, "ssid", status.sta_ssid[0] != '\0' ? status.sta_ssid : (credentials.networks[0].ssid[0] != '\0' ? credentials.networks[0].ssid : ""));
     cJSON_AddStringToObject(sta, "ip", status.sta_ip);
     cJSON_AddStringToObject(sta, "mac", status.sta_mac);
-    cJSON_AddBoolToObject(sta, "hasPassword", credentials.password[0] != '\0');
+
+    bool active_has_password = false;
+    for (std::size_t i = 0; i < settings::kMaxWifiNetworks; ++i) {
+        if (std::strcmp(credentials.networks[i].ssid, status.sta_ssid) == 0) {
+            active_has_password = (credentials.networks[i].password[0] != '\0');
+            break;
+        }
+    }
+    cJSON_AddBoolToObject(sta, "hasPassword", active_has_password);
+
+    // Дополнительно возвращаем массив всех сохраненных сетей для Web UI
+    cJSON* networks_arr = cJSON_AddArrayToObject(root, "networks");
+    for (std::size_t i = 0; i < settings::kMaxWifiNetworks; ++i) {
+        const auto& net = credentials.networks[i];
+        if (net.ssid[0] != '\0') {
+            cJSON* net_obj = cJSON_CreateObject();
+            cJSON_AddStringToObject(net_obj, "ssid", net.ssid);
+            cJSON_AddBoolToObject(net_obj, "hasPassword", net.password[0] != '\0');
+            cJSON_AddItemToArray(networks_arr, net_obj);
+        }
+    }
 
     char* text = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -515,7 +632,6 @@ esp_err_t WebServer::updateWifi(httpd_req_t* req) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
     }
 
-    settings::WifiCredentials credentials{};
     cJSON* ssid = cJSON_GetObjectItemCaseSensitive(root, "ssid");
     cJSON* password = cJSON_GetObjectItemCaseSensitive(root, "password");
     if (!cJSON_IsString(ssid) || ssid->valuestring == nullptr) {
@@ -527,16 +643,12 @@ esp_err_t WebServer::updateWifi(httpd_req_t* req) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "password must be a string");
     }
 
-    std::strncpy(credentials.ssid, ssid->valuestring, sizeof(credentials.ssid) - 1);
-    if (password != nullptr && password->valuestring != nullptr) {
-        std::strncpy(credentials.password,
-                     password->valuestring,
-                     sizeof(credentials.password) - 1);
-    }
-    credentials.configured = credentials.ssid[0] != '\0';
+    const char* ssid_str = ssid->valuestring;
+    const char* password_str = (password != nullptr && password->valuestring != nullptr) ? password->valuestring : "";
+
+    esp_err_t err = settings_.saveWifi(ssid_str, password_str);
     cJSON_Delete(root);
 
-    esp_err_t err = settings_.saveWifi(credentials);
     if (err != ESP_OK) {
         ESP_LOGE(kTag, "wifi save failed: %s", esp_err_to_name(err));
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "wifi save failed");
@@ -549,6 +661,30 @@ esp_err_t WebServer::updateWifi(httpd_req_t* req) {
     }
 
     return sendWifi(req);
+}
+
+esp_err_t WebServer::sendWifiScan(httpd_req_t* req) const {
+    auto networks = wifi_.scanNetworks();
+
+    cJSON* root = cJSON_CreateArray();
+    for (const auto& net : networks) {
+        cJSON* item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "ssid", net.ssid);
+        cJSON_AddNumberToObject(item, "rssi", static_cast<double>(net.rssi));
+        cJSON_AddBoolToObject(item, "secure", net.authmode != WIFI_AUTH_OPEN);
+        cJSON_AddItemToArray(root, item);
+    }
+
+    char* text = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (text == nullptr) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json allocation failed");
+    }
+
+    setJsonHeaders(req);
+    const esp_err_t err = httpd_resp_send(req, text, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(text);
+    return err;
 }
 
 esp_err_t WebServer::sendUdpTelemetry(httpd_req_t* req) const {
@@ -619,15 +755,29 @@ esp_err_t WebServer::updateUdpTelemetry(httpd_req_t* req) {
 esp_err_t WebServer::sendStaticFile(httpd_req_t* req) const {
     char path[160]{};
     const char* uri = req->uri;
-    if (std::strcmp(uri, "/") == 0) {
+    
+    if (std::strncmp(uri, "http://", 7) == 0) {
+        uri = std::strchr(uri + 7, '/');
+    } else if (std::strncmp(uri, "https://", 8) == 0) {
+        uri = std::strchr(uri + 8, '/');
+    }
+    
+    if (uri == nullptr || std::strcmp(uri, "/") == 0) {
         uri = "/index.html";
     }
 
-    if (std::strstr(uri, "..") != nullptr) {
+    char clean_uri[128]{};
+    std::strncpy(clean_uri, uri, sizeof(clean_uri) - 1);
+    char* query_start = std::strchr(clean_uri, '?');
+    if (query_start != nullptr) {
+        *query_start = '\0';
+    }
+
+    if (std::strstr(clean_uri, "..") != nullptr) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid path");
     }
 
-    const int written = std::snprintf(path, sizeof(path), "%s%s", assets_.basePath(), uri);
+    const int written = std::snprintf(path, sizeof(path), "%s%s", assets_.basePath(), clean_uri);
     if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(path)) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "path too long");
     }

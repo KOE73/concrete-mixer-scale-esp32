@@ -31,6 +31,7 @@ private:
     static esp_err_t settingsPostHandler(httpd_req_t* req);
     static esp_err_t wifiGetHandler(httpd_req_t* req);
     static esp_err_t wifiPostHandler(httpd_req_t* req);
+    static esp_err_t wifiScanHandler(httpd_req_t* req);
     static esp_err_t udpTelemetryGetHandler(httpd_req_t* req);
     static esp_err_t udpTelemetryPostHandler(httpd_req_t* req);
 
@@ -39,6 +40,7 @@ private:
     esp_err_t updateSettings(httpd_req_t* req);
     esp_err_t sendWifi(httpd_req_t* req) const;
     esp_err_t updateWifi(httpd_req_t* req);
+    esp_err_t sendWifiScan(httpd_req_t* req) const;
     esp_err_t sendUdpTelemetry(httpd_req_t* req) const;
     esp_err_t updateUdpTelemetry(httpd_req_t* req);
     esp_err_t sendStaticFile(httpd_req_t* req) const;

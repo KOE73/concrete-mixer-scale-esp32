@@ -42,7 +42,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.5.1
+    version: 5.4.2
 direct_dependencies:
 - esp-idf-lib/hx711
 manifest_hash: 0f769c5e48d29a2b6b2a6243017da3326584860e94fd80df906dcfe7a2745a59

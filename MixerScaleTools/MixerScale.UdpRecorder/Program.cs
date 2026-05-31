@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using MixerScale.UdpRecorder;
@@ -11,6 +12,7 @@ Directory.CreateDirectory(outputDirectory);
 
 AnsiConsole.MarkupLine("[bold]MixerScale UDP recorder[/]");
 AnsiConsole.MarkupLine($"UDP: [yellow]{settings.BindAddress}:{settings.Port}[/]");
+AnsiConsole.MarkupLine($"Listen endpoints: [yellow]{Markup.Escape(FormatListenEndpoints(settings))}[/]");
 AnsiConsole.MarkupLine($"CSV: [yellow]{Path.GetFullPath(outputDirectory)}[/]");
 AnsiConsole.MarkupLine("Ожидаемый пакет: [grey]scale_id,seq,ms,raw_sum,kg_sum,flags[/]");
 AnsiConsole.MarkupLine("Остановка: [grey]Ctrl+C[/]");
@@ -126,9 +128,39 @@ static Table CreateStatusTable(
     table.AddRow("Потери seq", stats.LostPackets.ToString());
     table.AddRow("Последний seq", lastPacket?.Sequence.ToString() ?? "-");
     table.AddRow("Scale ID", lastPacket?.ScaleId.ToString() ?? "-");
+    table.AddRow("Listen endpoints", Markup.Escape(FormatListenEndpoints(settings)));
     table.AddRow("Ошибка", Markup.Escape(lastError));
 
     return table;
+}
+
+static string FormatListenEndpoints(RecorderSettings settings)
+{
+    if (!IPAddress.TryParse(settings.BindAddress, out var bindAddress))
+    {
+        return $"{settings.BindAddress}:{settings.Port}";
+    }
+
+    if (!IPAddress.Any.Equals(bindAddress))
+    {
+        return $"{bindAddress}:{settings.Port}";
+    }
+
+    var endpoints = NetworkInterface.GetAllNetworkInterfaces()
+        .Where(networkInterface =>
+            networkInterface.OperationalStatus == OperationalStatus.Up &&
+            networkInterface.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+        .SelectMany(networkInterface =>
+            networkInterface.GetIPProperties().UnicastAddresses
+                .Where(address =>
+                    address.Address.AddressFamily == AddressFamily.InterNetwork &&
+                    !IPAddress.IsLoopback(address.Address))
+                .Select(address => $"{address.Address}:{settings.Port}"))
+        .Distinct()
+        .Order()
+        .ToArray();
+
+    return endpoints.Length == 0 ? $"0.0.0.0:{settings.Port}" : string.Join(", ", endpoints);
 }
 
 static Table CreatePacketTable(SensorCsvPacket? packet)

@@ -7,7 +7,9 @@
 #include "config/hardware_config.hpp"
 #include "config/network_config.hpp"
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
@@ -17,6 +19,7 @@ namespace {
 
 constexpr char kTag[] = "udp_telemetry";
 constexpr std::size_t kPacketBufferSize = 512;
+constexpr uint32_t kSocketRecreateFailureThreshold = 30;
 
 }  // namespace
 
@@ -56,11 +59,13 @@ void UdpTelemetryTask::run() {
             sendState(socket_fd, state);
             last_sequence_ = state.sample.sequence;
 
-            if (send_failure_count_ >= 3) {
+            if (send_failure_count_ >= kSocketRecreateFailureThreshold && last_send_errno_ != ENOMEM) {
                 close(socket_fd);
                 socket_fd = -1;
                 send_failure_count_ = 0;
-                ESP_LOGW(kTag, "UDP socket recreated after repeated send failures");
+                last_send_errno_ = 0;
+                ESP_LOGW(kTag, "UDP socket recreated after %lu repeated send failures",
+                         static_cast<unsigned long>(kSocketRecreateFailureThreshold));
             }
         }
 
@@ -151,10 +156,16 @@ void UdpTelemetryTask::sendState(int socket_fd, const domain::WeightState& state
                             sizeof(destination));
     if (sent < 0) {
         ++send_failure_count_;
+        last_send_errno_ = errno;
         if (send_failure_count_ == 1 || send_failure_count_ % 10 == 0) {
-            ESP_LOGW(kTag, "sendto failed: errno=%d failures=%lu",
+            ESP_LOGW(kTag,
+                     "sendto failed: errno=%d failures=%lu heap=%u min_heap=%u largest=%u udp_stack=%u",
                      errno,
-                     static_cast<unsigned long>(send_failure_count_));
+                     static_cast<unsigned long>(send_failure_count_),
+                     static_cast<unsigned>(esp_get_free_heap_size()),
+                     static_cast<unsigned>(esp_get_minimum_free_heap_size()),
+                     static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+                     static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
         }
         return;
     }
@@ -163,15 +174,20 @@ void UdpTelemetryTask::sendState(int socket_fd, const domain::WeightState& state
         ESP_LOGI(kTag, "UDP send recovered after %lu failures",
                  static_cast<unsigned long>(send_failure_count_));
         send_failure_count_ = 0;
+        last_send_errno_ = 0;
     }
     ++send_success_count_;
-    if (send_success_count_ == 1 || send_success_count_ % 100 == 0) {
+    if (send_success_count_ == 1 || send_success_count_ % 600 == 0) {
         ESP_LOGI(kTag,
-                 "UDP sent seq=%llu to %s:%u successes=%lu",
+                 "UDP sent seq=%llu to %s:%u successes=%lu heap=%u min_heap=%u largest=%u udp_stack=%u",
                  static_cast<unsigned long long>(state.sample.sequence),
                  settings.target_host,
                  static_cast<unsigned>(settings.port),
-                 static_cast<unsigned long>(send_success_count_));
+                 static_cast<unsigned long>(send_success_count_),
+                 static_cast<unsigned>(esp_get_free_heap_size()),
+                 static_cast<unsigned>(esp_get_minimum_free_heap_size()),
+                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+                 static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     }
 }
 

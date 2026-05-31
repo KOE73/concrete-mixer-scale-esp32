@@ -19,7 +19,7 @@ constexpr char kCalibrationKey[] = "state";
 constexpr uint32_t kCalibrationVersion = 4;
 constexpr char kWifiNamespace[] = "wifi";
 constexpr char kWifiKey[] = "sta";
-constexpr uint32_t kWifiVersion = 1;
+constexpr uint32_t kWifiVersion = 2;
 constexpr char kUdpNamespace[] = "udp";
 constexpr char kUdpKey[] = "telemetry";
 constexpr uint32_t kUdpVersion = 1;
@@ -306,18 +306,51 @@ esp_err_t SettingsStore::save(const domain::CalibrationState& state) {
     return err;
 }
 
-esp_err_t SettingsStore::saveWifi(const WifiCredentials& credentials) {
+esp_err_t SettingsStore::saveWifi(const char* ssid, const char* password) {
     nvs_handle_t handle = 0;
     esp_err_t err = nvs_open(kWifiNamespace, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
         return err;
     }
 
+    WifiCredentials creds{};
+    if (mutex_ != nullptr && xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE) {
+        creds = wifi_;
+        xSemaphoreGive(mutex_);
+    }
+
+    if (ssid == nullptr || ssid[0] == '\0') {
+        creds = {};
+    } else {
+        int existing_idx = -1;
+        for (std::size_t i = 0; i < kMaxWifiNetworks; ++i) {
+            if (std::strcmp(creds.networks[i].ssid, ssid) == 0) {
+                existing_idx = static_cast<int>(i);
+                break;
+            }
+        }
+
+        WifiNetwork new_net{};
+        std::strncpy(new_net.ssid, ssid, sizeof(new_net.ssid) - 1);
+        if (password != nullptr) {
+            std::strncpy(new_net.password, password, sizeof(new_net.password) - 1);
+        }
+
+        if (existing_idx != -1) {
+            for (int i = existing_idx; i > 0; --i) {
+                creds.networks[i] = creds.networks[i - 1];
+            }
+        } else {
+            for (int i = static_cast<int>(kMaxWifiNetworks) - 1; i > 0; --i) {
+                creds.networks[i] = creds.networks[i - 1];
+            }
+        }
+        creds.networks[0] = new_net;
+        creds.configured = true;
+    }
+
     StoredWifi stored{};
-    stored.credentials = credentials;
-    stored.credentials.ssid[sizeof(stored.credentials.ssid) - 1] = '\0';
-    stored.credentials.password[sizeof(stored.credentials.password) - 1] = '\0';
-    stored.credentials.configured = stored.credentials.ssid[0] != '\0';
+    stored.credentials = creds;
 
     err = nvs_set_blob(handle, kWifiKey, &stored, sizeof(stored));
     if (err == ESP_OK) {
@@ -326,7 +359,7 @@ esp_err_t SettingsStore::saveWifi(const WifiCredentials& credentials) {
     nvs_close(handle);
 
     if (err == ESP_OK) {
-        setWifiCredentials(stored.credentials);
+        setWifiCredentials(creds);
     }
     return err;
 }
@@ -402,9 +435,18 @@ void SettingsStore::setCalibration(const domain::CalibrationState& state) {
 
 void SettingsStore::setWifiCredentials(const WifiCredentials& credentials) {
     WifiCredentials normalized = credentials;
-    normalized.ssid[sizeof(normalized.ssid) - 1] = '\0';
-    normalized.password[sizeof(normalized.password) - 1] = '\0';
-    normalized.configured = normalized.ssid[0] != '\0';
+    for (std::size_t i = 0; i < kMaxWifiNetworks; ++i) {
+        normalized.networks[i].ssid[sizeof(normalized.networks[i].ssid) - 1] = '\0';
+        normalized.networks[i].password[sizeof(normalized.networks[i].password) - 1] = '\0';
+    }
+    bool configured = false;
+    for (std::size_t i = 0; i < kMaxWifiNetworks; ++i) {
+        if (normalized.networks[i].ssid[0] != '\0') {
+            configured = true;
+            break;
+        }
+    }
+    normalized.configured = configured;
 
     if (mutex_ != nullptr && xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE) {
         wifi_ = normalized;
@@ -442,11 +484,11 @@ domain::CalibrationState SettingsStore::defaultCalibration() {
 
 WifiCredentials SettingsStore::defaultWifiCredentials() {
     WifiCredentials credentials{};
-    std::strncpy(credentials.ssid, config::kDefaultStaSsid, sizeof(credentials.ssid) - 1);
-    std::strncpy(credentials.password,
-                 config::kDefaultStaPassword,
-                 sizeof(credentials.password) - 1);
-    credentials.configured = credentials.ssid[0] != '\0';
+    if (config::kDefaultStaSsid[0] != '\0') {
+        std::strncpy(credentials.networks[0].ssid, config::kDefaultStaSsid, sizeof(credentials.networks[0].ssid) - 1);
+        std::strncpy(credentials.networks[0].password, config::kDefaultStaPassword, sizeof(credentials.networks[0].password) - 1);
+        credentials.configured = true;
+    }
     return credentials;
 }
 

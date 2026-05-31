@@ -13,9 +13,9 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <cstring>
 
 namespace mixer::display
 {
@@ -28,17 +28,18 @@ namespace mixer::display
 
         // Главная вертикальная шкала: все уставки в overlay-режиме, каждый
         // следующий диапазон снова заполняет колонку снизу вверх.
-        constexpr int kAllSetpointsX = 0;
-        constexpr int kAllSetpointsY = 0;
-        constexpr int kAllSetpointsWidth = 12;
-        constexpr int kAllSetpointsHeight = 64;
+        constexpr int kAllSetpointsX = 1;
+        constexpr int kAllSetpointsY = 12;
+        constexpr int kAllSetpointsWidth = 8;
+        constexpr int kAllSetpointsHeight = 51;
 
         // Узкие шкалы отдельных уставок. На 64x64 помещается 6 штук:
-        // 12px общая шкала + 1px зазор + 6 * (6px шкала + 1px зазор) + spinner.
-        constexpr int kSingleSetpointStartX = 13;
-        constexpr int kSingleSetpointY = 0;
-        constexpr int kSingleSetpointWidth = 6;
-        constexpr int kSingleSetpointHeight = 64;
+        // Все шкалы (и общая, и одиночные) сделаны по 8 пикселей.
+        // Одиночные начинаются с X=10 и идут до X=62, оставляя по 1px зазора по бокам и снизу.
+        constexpr int kSingleSetpointStartX = 10;
+        constexpr int kSingleSetpointY = 12;
+        constexpr int kSingleSetpointWidth = 8;
+        constexpr int kSingleSetpointHeight = 51;
         constexpr int kSingleSetpointGap = 1;
         constexpr std::size_t kVisibleSingleSetpointCount = 6;
 
@@ -47,11 +48,11 @@ namespace mixer::display
         constexpr float kPreviousSetpointBackoff = 0.10f;
         constexpr float kSetpointOverrun = 0.10f;
 
-        // Диагностический spinner вынесен в угол и не перекрывает рабочие шкалы.
-        constexpr int kSpinnerX = 55;
-        constexpr int kSpinnerY = 55;
-        constexpr int kSpinnerWidth = 9;
-        constexpr int kSpinnerHeight = 9;
+        // Диагностический spinner вынесен в верхний статус-бар и не перекрывает рабочие шкалы.
+        constexpr int kSpinnerX = 57;
+        constexpr int kSpinnerY = 2;
+        constexpr int kSpinnerWidth = 5;
+        constexpr int kSpinnerHeight = 5;
 
 #pragma endregion
 
@@ -89,6 +90,83 @@ namespace mixer::display
             red = static_cast<uint8_t>(phase * 3);
             green = 0;
             blue = static_cast<uint8_t>(255 - phase * 3);
+        }
+
+        const uint8_t* getGlyph3x5(char c)
+        {
+            static const uint8_t kGlyph0[] = {7, 5, 5, 5, 7}; // 0
+            static const uint8_t kGlyph1[] = {2, 2, 2, 2, 2}; // 1
+            static const uint8_t kGlyph2[] = {7, 1, 7, 4, 7}; // 2
+            static const uint8_t kGlyph3[] = {7, 1, 7, 1, 7}; // 3
+            static const uint8_t kGlyph4[] = {5, 5, 7, 1, 1}; // 4
+            static const uint8_t kGlyph5[] = {7, 4, 7, 1, 7}; // 5
+            static const uint8_t kGlyph6[] = {7, 4, 7, 5, 7}; // 6
+            static const uint8_t kGlyph7[] = {7, 1, 1, 1, 1}; // 7
+            static const uint8_t kGlyph8[] = {7, 5, 7, 5, 7}; // 8
+            static const uint8_t kGlyph9[] = {7, 5, 7, 1, 7}; // 9
+            static const uint8_t kGlyphDot[] = {0, 0, 0, 0, 2}; // .
+            
+            static const uint8_t kGlyphA[] = {2, 5, 7, 5, 5}; // A
+            static const uint8_t kGlyphC[] = {7, 4, 4, 4, 7}; // C
+            static const uint8_t kGlyphD[] = {6, 5, 5, 5, 6}; // D
+            static const uint8_t kGlyphH[] = {5, 5, 7, 5, 5}; // H
+            static const uint8_t kGlyphI[] = {7, 2, 2, 2, 7}; // I
+            static const uint8_t kGlyphP[] = {7, 5, 7, 4, 4}; // P
+            static const uint8_t kGlyphS[] = {7, 4, 7, 1, 7}; // S
+            static const uint8_t kGlyphT[] = {7, 2, 2, 2, 2}; // T
+            
+            static const uint8_t kGlyphSpace[] = {0, 0, 0, 0, 0};
+            
+            switch (c)
+            {
+                case '0': return kGlyph0;
+                case '1': return kGlyph1;
+                case '2': return kGlyph2;
+                case '3': return kGlyph3;
+                case '4': return kGlyph4;
+                case '5': return kGlyph5;
+                case '6': return kGlyph6;
+                case '7': return kGlyph7;
+                case '8': return kGlyph8;
+                case '9': return kGlyph9;
+                case '.': return kGlyphDot;
+                case 'A': return kGlyphA;
+                case 'C': return kGlyphC;
+                case 'D': return kGlyphD;
+                case 'H': return kGlyphH;
+                case 'I': return kGlyphI;
+                case 'P': return kGlyphP;
+                case 'S': return kGlyphS;
+                case 'T': return kGlyphT;
+                default: return kGlyphSpace;
+            }
+        }
+
+        void drawChar3x5(MatrixPanel_I2S_DMA* matrix, int x, int y, char c, uint16_t color)
+        {
+            if (matrix == nullptr) return;
+            const uint8_t* rows = getGlyph3x5(c);
+            
+            uint8_t r = ((color >> 11) & 0x1F) << 3;
+            uint8_t g = ((color >> 5) & 0x3F) << 2;
+            uint8_t b = (color & 0x1F) << 3;
+
+            for (int row = 0; row < 5; ++row)
+            {
+                uint8_t val = rows[row];
+                if (val & 4) matrix->drawPixelRGB888(x, y + row, r, g, b);
+                if (val & 2) matrix->drawPixelRGB888(x + 1, y + row, r, g, b);
+                if (val & 1) matrix->drawPixelRGB888(x + 2, y + row, r, g, b);
+            }
+        }
+
+        void drawText(MatrixPanel_I2S_DMA* matrix, int x, int y, const char* str, uint16_t color)
+        {
+            while (*str)
+            {
+                drawChar3x5(matrix, x, y, *str++, color);
+                x += 4; // 3px символ + 1px зазор
+            }
         }
 
         float asDisplayValue(int64_t value)
@@ -244,6 +322,50 @@ namespace mixer::display
             matrix_->fillScreenRGB888(0, 0, 0);
             if (renderStartupAnimation(frame.diagnostic_tick))
                 return;
+
+            // Отрисовываем горизонтальный разделитель темно-серого цвета
+            matrix_->fillRect(0, 11, 64, 1, 40, 40, 40);
+
+            // Определяем цвет и рисуем код состояния Wi-Fi (DIS, SCH, STA, AP)
+            uint16_t state_color = matrix_->color565(120, 120, 120); // DIS - серый
+            if (strcmp(frame.wifi_state_code, "SCH") == 0)
+            {
+                // Мигаем желтым цветом в режиме поиска
+                if ((frame.diagnostic_tick / 10) % 2 == 0) {
+                    state_color = matrix_->color565(255, 215, 0);
+                } else {
+                    state_color = matrix_->color565(60, 50, 0);
+                }
+            }
+            else if (strcmp(frame.wifi_state_code, "STA") == 0)
+            {
+                state_color = matrix_->color565(0, 220, 80); // STA - зеленый
+            }
+            else if (strcmp(frame.wifi_state_code, "AP") == 0)
+            {
+                state_color = matrix_->color565(255, 120, 0); // AP - оранжевый
+            }
+
+            drawText(matrix_.get(), 1, 2, frame.wifi_state_code, state_color);
+
+            // Отрисовываем сокращенный IP-адрес с цветовой индикацией
+            if (frame.wifi_ip[0] != '\0')
+            {
+                uint16_t ip_color = matrix_->color565(200, 200, 200); // По умолчанию белый
+                if (strcmp(frame.wifi_state_code, "STA") == 0)
+                {
+                    ip_color = matrix_->color565(0, 190, 255); // STA IP - голубой
+                }
+                else if (strcmp(frame.wifi_state_code, "AP") == 0)
+                {
+                    if (frame.wifi_ap_has_clients) {
+                        ip_color = matrix_->color565(0, 220, 80); // Есть подключенные клиенты - зеленый
+                    } else {
+                        ip_color = matrix_->color565(200, 200, 200); // Нет клиентов - белый
+                    }
+                }
+                drawText(matrix_.get(), 22, 2, frame.wifi_ip, ip_color);
+            }
 
             configureIndicators(frame);
             drawVirtualSensorIndicator(frame);

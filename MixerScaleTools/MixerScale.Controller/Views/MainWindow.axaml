@@ -10,10 +10,11 @@
         Background="#F3F5F7">
     <Border Grid.Row="0"
             Background="#17202A"
-            Padding="16,12">
+            Padding="16,8">
       <Grid ColumnDefinitions="*,Auto"
             RowDefinitions="Auto,Auto">
-        <TextBlock Grid.Row="0"
+        <TextBlock x:Name="TitleTextBlock"
+                   Grid.Row="0"
                    Grid.Column="0"
                    Text="MixerScale Controller"
                    Foreground="White"
@@ -28,22 +29,20 @@
         <StackPanel Grid.Row="0"
                     Grid.RowSpan="2"
                     Grid.Column="1"
-                    Orientation="Horizontal"
-                    Spacing="10"
-                    VerticalAlignment="Center">
-          <Border x:Name="ConnectionDot"
-                  Width="14"
-                  Height="14"
-                  CornerRadius="7"
-                  Background="#697783" />
-          <TextBlock x:Name="ConnectionText"
-                     Foreground="White"
-                     FontWeight="SemiBold"
-                     VerticalAlignment="Center"
-                     Text="нет данных" />
-          <Button x:Name="RefreshButton"
-                  Content="Обновить"
-                  Padding="12,6" />
+                    Orientation="Vertical"
+                    Spacing="2"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Right">
+          <TextBlock x:Name="HeaderWifiText"
+                     Foreground="#B8C4CE"
+                     FontSize="11"
+                     FontFamily="Consolas"
+                     TextAlignment="Right" />
+          <TextBlock x:Name="HeaderUdpText"
+                     Foreground="#B8C4CE"
+                     FontSize="11"
+                     FontFamily="Consolas"
+                     TextAlignment="Right" />
         </StackPanel>
       </Grid>
     </Border>
@@ -160,38 +159,9 @@
 
       <Grid Grid.Row="1"
             Grid.Column="1"
-            RowDefinitions="Auto,Auto,Auto,*"
+            RowDefinitions="Auto,*"
             RowSpacing="14">
-        <Border Background="White"
-                BorderBrush="#CDD6DE"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-          <StackPanel Spacing="5">
-            <TextBlock Text="Wi-Fi"
-                       FontSize="16"
-                       FontWeight="SemiBold" />
-            <TextBlock x:Name="WifiText"
-                       TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
-
-        <Border Grid.Row="1"
-                Background="White"
-                BorderBrush="#CDD6DE"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-          <StackPanel Spacing="5">
-            <TextBlock Text="UDP телеметрия"
-                       FontSize="16"
-                       FontWeight="SemiBold" />
-            <TextBlock x:Name="UdpText"
-                       TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
-
-        <Border Grid.Row="2"
+        <Border Grid.Row="0"
                 Background="White"
                 BorderBrush="#CDD6DE"
                 BorderThickness="1"
@@ -282,7 +252,7 @@
           </StackPanel>
         </Border>
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="1"
                 Background="White"
                 BorderBrush="#CDD6DE"
                 BorderThickness="1"

@@ -19,16 +19,20 @@ internal sealed class MixerScaleApiClient : IDisposable
 
     public MixerScaleApiClient(ControllerSettings settings)
     {
-        var handler = new HttpClientHandler
+        var handler = new SocketsHttpHandler
         {
-            UseProxy = false
+            UseProxy = false,
+            MaxConnectionsPerServer = 1,
+            PooledConnectionLifetime = TimeSpan.Zero,
+            PooledConnectionIdleTimeout = TimeSpan.Zero
         };
 
         _httpClient = new HttpClient(handler)
         {
             BaseAddress = settings.DeviceBaseUri,
-            Timeout = TimeSpan.FromMilliseconds(settings.RequestTimeoutMs)
+            Timeout = Timeout.InfiniteTimeSpan
         };
+        _httpClient.DefaultRequestHeaders.ConnectionClose = true;
     }
 
     public Task<ApiCallResult<LiveWeightState>> GetStateAsync(CancellationToken cancellationToken) =>
@@ -59,7 +63,7 @@ internal sealed class MixerScaleApiClient : IDisposable
             var state = CborLiveStateReader.Read(await ReadAllBytesAsync(stream, cancellationToken));
             return ApiCallResult<LiveWeightState>.Ok(state, watch.Elapsed);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException or IOException)
         {
             return ApiCallResult<LiveWeightState>.Fail(ex.Message, watch.Elapsed);
         }
@@ -77,7 +81,7 @@ internal sealed class MixerScaleApiClient : IDisposable
                 ? ApiCallResult<T>.Fail("Пустой ответ.", watch.Elapsed)
                 : ApiCallResult<T>.Ok(value, watch.Elapsed);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException or IOException)
         {
             return ApiCallResult<T>.Fail(ex.Message, watch.Elapsed);
         }
@@ -109,7 +113,7 @@ internal sealed class MixerScaleApiClient : IDisposable
                 ? ApiCallResult<T>.Fail("Пустой ответ.", watch.Elapsed)
                 : ApiCallResult<T>.Ok(value, watch.Elapsed);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException or IOException)
         {
             return ApiCallResult<T>.Fail(ex.Message, watch.Elapsed);
         }
