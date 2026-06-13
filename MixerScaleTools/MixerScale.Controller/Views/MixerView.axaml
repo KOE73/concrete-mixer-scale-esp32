@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             xmlns:views="clr-namespace:MixerScale.Controller.Views"
+             x:Class="MixerScale.Controller.Views.MixerView"
+             x:DataType="vm:MixerViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <Grid ColumnDefinitions="2*,*"
+        RowDefinitions="Auto,*"
+        Margin="{StaticResource MainGridMargin}"
+        ColumnSpacing="{StaticResource MainGridColumnSpacing}"
+        RowSpacing="{StaticResource MainGridRowSpacing}">
+
+    <!-- Строка 0, левая колонка: таблица MA-фильтров -->
+    <Border Grid.Row="0" Grid.Column="0"
+            Background="{StaticResource CardBgBrush}"
+            BorderBrush="{StaticResource CardBorderBrush}"
+            BorderThickness="{StaticResource CardBorderThickness}"
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Padding="{StaticResource CardPadding}">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Disabled">
+        <views:FiltersView DataContext="{Binding Filters}" />
+      </ScrollViewer>
+    </Border>
+
+    <!-- Строка 1, левая колонка: График -->
+    <Border Grid.Row="1" Grid.Column="0"
+            Background="{StaticResource CardBgBrush}"
+            BorderBrush="{StaticResource CardBorderBrush}"
+            BorderThickness="{StaticResource CardBorderThickness}"
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Padding="{StaticResource CardPadding}">
+      <views:GraphView DataContext="{Binding Graph}" />
+    </Border>
+
+    <!-- Правая колонка: Прокручиваемый список настроек (Метрики, Калибровка, Единицы, Уставки, API) -->
+    <ScrollViewer Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
+                  VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="{StaticResource MainGridRowSpacing}">
+        
+        <!-- Карточка 0: Метрики -->
+        <Border Background="{StaticResource CardBgBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}"
+                BorderThickness="{StaticResource CardBorderThickness}"
+                CornerRadius="{StaticResource CardCornerRadius}"
+                Padding="{StaticResource CardPadding}">
+          <views:MetricsView DataContext="{Binding Metrics}" />
+        </Border>
+
+        <!-- Карточка 1: Калибровка -->
+        <Border Background="{StaticResource CardBgBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}"
+                BorderThickness="{StaticResource CardBorderThickness}"
+                CornerRadius="{StaticResource CardCornerRadius}"
+                Padding="{StaticResource CardPadding}">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Калибровка"
+                       FontWeight="{StaticResource SemiBoldFontWeight}"
+                       Margin="{StaticResource LabelMargin}" />
+            <views:CalibrationView DataContext="{Binding Calibration}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Карточка 2: Единицы измерения -->
+        <Border Background="{StaticResource CardBgBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}"
+                BorderThickness="{StaticResource CardBorderThickness}"
+                CornerRadius="{StaticResource CardCornerRadius}"
+                Padding="{StaticResource CardPadding}">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Единицы измерения"
+                       FontWeight="{StaticResource SemiBoldFontWeight}"
+                       Margin="{StaticResource LabelMargin}" />
+            <views:UnitsView DataContext="{Binding Calibration.Units}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Карточка 3: Уставки -->
+        <Border Background="{StaticResource CardBgBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}"
+                BorderThickness="{StaticResource CardBorderThickness}"
+                CornerRadius="{StaticResource CardCornerRadius}"
+                Padding="{StaticResource CardPadding}">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Уставки"
+                       FontWeight="{StaticResource SemiBoldFontWeight}"
+                       Margin="{StaticResource LabelMargin}" />
+            <views:SetpointsView DataContext="{Binding Calibration.Setpoints}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Карточка 4: Статус API -->
+        <Border Background="{StaticResource CardBgBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}"
+                BorderThickness="{StaticResource CardBorderThickness}"
+                CornerRadius="{StaticResource CardCornerRadius}"
+                Padding="{StaticResource CardPadding}">
+          <views:ApiStatusView DataContext="{Binding ApiStatus}" />
+        </Border>
+
+      </StackPanel>
+    </ScrollViewer>
+
+  </Grid>
+</UserControl>

@@ -1,0 +1,96 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             xmlns:views="clr-namespace:MixerScale.Controller.Views"
+             x:Class="MixerScale.Controller.Views.CalibrationView"
+             x:DataType="vm:CalibrationViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <StackPanel Spacing="{StaticResource CardStackSpacing}">
+    <!-- Таблица параметров калибровки: текущие значения и ввод -->
+    <Grid ColumnDefinitions="Auto,*,*"
+          RowDefinitions="Auto,Auto"
+          ColumnSpacing="4"
+          RowSpacing="2">
+      <!-- Offset -->
+      <TextBlock Grid.Row="0"
+                 Text="Offset"
+                 VerticalAlignment="Center"
+                 Foreground="{StaticResource TextSecondaryBrush}" />
+      <TextBlock Grid.Row="0" Grid.Column="1"
+                 Text="{Binding CurrentOffset}"
+                 FontFamily="{StaticResource MonoFontFamily}"
+                 VerticalAlignment="Center"
+                 HorizontalAlignment="Center" />
+      <TextBox Grid.Row="0" Grid.Column="2"
+               Text="{Binding OffsetInput}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               Padding="2,1" MinHeight="20"
+               VerticalAlignment="Center" />
+
+      <!-- Scale -->
+      <TextBlock Grid.Row="1"
+                 Text="Scale"
+                 VerticalAlignment="Center"
+                 Foreground="{StaticResource TextSecondaryBrush}" />
+      <TextBlock Grid.Row="1" Grid.Column="1"
+                 Text="{Binding CurrentScale}"
+                 FontFamily="{StaticResource MonoFontFamily}"
+                 VerticalAlignment="Center"
+                 HorizontalAlignment="Center" />
+      <TextBox Grid.Row="1" Grid.Column="2"
+               Text="{Binding ScaleInput}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               Padding="2,1" MinHeight="20"
+               VerticalAlignment="Center" />
+    </Grid>
+
+    <!-- Zero: выбор источника + кнопки -->
+    <Grid ColumnDefinitions="*,Auto,Auto"
+          ColumnSpacing="{StaticResource InputGridColumnSpacing}">
+      <ComboBox ItemsSource="{Binding ZeroSources}"
+                 SelectedItem="{Binding SelectedZeroSource}"
+                 Padding="4,1" MinHeight="20"
+                 VerticalAlignment="Center"
+                 HorizontalAlignment="Stretch" />
+      <Button Grid.Column="1"
+              Content="→0←"
+              FontSize="14"
+              ToolTip.Tip="Zero по выбранному источнику"
+              Command="{Binding ZeroCommand}"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16"
+              HorizontalContentAlignment="Center"
+              VerticalContentAlignment="Center" />
+      <Button Grid.Column="2"
+              Content="💾"
+              FontSize="14"
+              ToolTip.Tip="Сохранить калибровку"
+              Command="{Binding SaveCalibrationCommand}"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16"
+              HorizontalContentAlignment="Center"
+              VerticalContentAlignment="Center" />
+    </Grid>
+
+    <!-- Статус операции -->
+    <TextBlock Text="{Binding StatusText}"
+               Foreground="{StaticResource TextSecondaryBrush}"
+               IsVisible="{Binding HasStatusText}"
+               TextWrapping="Wrap" />
+
+  </StackPanel>
+</UserControl>

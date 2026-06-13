@@ -17,7 +17,7 @@ internal sealed class MixerScaleApiClient : IDisposable
 
     private readonly HttpClient _httpClient;
 
-    public MixerScaleApiClient(ControllerSettings settings)
+    public MixerScaleApiClient(string endpointUrl)
     {
         var handler = new SocketsHttpHandler
         {
@@ -29,7 +29,7 @@ internal sealed class MixerScaleApiClient : IDisposable
 
         _httpClient = new HttpClient(handler)
         {
-            BaseAddress = settings.DeviceBaseUri,
+            BaseAddress = new Uri(endpointUrl.TrimEnd('/') + "/"),
             Timeout = Timeout.InfiniteTimeSpan
         };
         _httpClient.DefaultRequestHeaders.ConnectionClose = true;

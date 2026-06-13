@@ -4,11 +4,21 @@ namespace MixerScale.Controller.Configuration;
 
 internal sealed record ControllerSettings
 {
-    public string DeviceBaseUrl { get; init; } = "http://192.168.20.41";
     public int PollIntervalMs { get; init; } = 1000;
     public int RequestTimeoutMs { get; init; } = 5000;
 
-    public Uri DeviceBaseUri => new(DeviceBaseUrl.TrimEnd('/') + "/");
+    /// <summary>
+    /// Список бетономешалок, которые добавляются автоматически при старте приложения.
+    /// </summary>
+    public IReadOnlyList<InitialMixerSettings> InitialMixers { get; init; } =
+    [
+        new InitialMixerSettings
+        {
+            Name = "Бетономешалка",
+            Endpoint = "http://192.168.20.41",
+            Type = MixerType.Real
+        }
+    ];
 
     public static ControllerSettings Load()
     {
@@ -35,4 +45,17 @@ internal sealed record ControllerSettings
             ? currentDirectoryPath
             : Path.Combine(AppContext.BaseDirectory, "appsettings.json");
     }
+}
+
+internal sealed record InitialMixerSettings
+{
+    public string Name { get; init; } = string.Empty;
+    public string Endpoint { get; init; } = string.Empty;
+    public MixerType Type { get; init; } = MixerType.Real;
+}
+
+internal enum MixerType
+{
+    Real,
+    Emulator
 }

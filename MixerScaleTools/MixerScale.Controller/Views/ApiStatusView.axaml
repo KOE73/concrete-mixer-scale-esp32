@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             x:Class="MixerScale.Controller.Views.ApiStatusView"
+             x:DataType="vm:ApiStatusViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <StackPanel Spacing="4">
+    <TextBlock Text="API"
+               FontSize="{StaticResource FontSizeHeader}"
+               FontWeight="{StaticResource SemiBoldFontWeight}" />
+    <TextBlock Text="{Binding WifiText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontSize="{StaticResource FontSizeLegend}" />
+    <TextBlock Text="{Binding UdpText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontSize="{StaticResource FontSizeLegend}" />
+    <TextBlock Text="{Binding StatusText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontSize="{StaticResource FontSizeLegend}"
+               TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

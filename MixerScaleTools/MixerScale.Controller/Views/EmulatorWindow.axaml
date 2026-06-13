@@ -1,0 +1,117 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+        x:Class="MixerScale.Controller.Views.EmulatorWindow"
+        x:DataType="vm:EmulatorViewModel"
+        Title="{Binding Title}"
+        Width="480"
+        Height="520"
+        MinWidth="360"
+        MinHeight="360">
+
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*"
+        Margin="{StaticResource MainGridMargin}"
+        RowSpacing="{StaticResource MainGridRowSpacing}">
+
+    <!-- Текущее raw значение -->
+    <Border Grid.Row="0"
+            Background="{StaticResource CardBgBrush}"
+            BorderBrush="{StaticResource CardBorderBrush}"
+            BorderThickness="{StaticResource CardBorderThickness}"
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Padding="{StaticResource CardPadding}">
+      <StackPanel>
+        <TextBlock Text="Симулируемый RawSum"
+                   Foreground="{StaticResource TextSecondaryBrush}" />
+        <TextBlock Text="{Binding RawSumDisplay}"
+                   FontFamily="{StaticResource MonoFontFamily}"
+                   FontSize="{StaticResource FontSizeLargeValue}"
+                   FontWeight="{StaticResource SemiBoldFontWeight}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Ползунок -->
+    <Border Grid.Row="1"
+            Background="{StaticResource CardBgBrush}"
+            BorderBrush="{StaticResource CardBorderBrush}"
+            BorderThickness="{StaticResource CardBorderThickness}"
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Padding="{StaticResource CardPadding}">
+      <Slider Minimum="{Binding RawMin}"
+              Maximum="{Binding RawMax}"
+              Value="{Binding RawSum}"
+              TickFrequency="10000"
+              IsSnapToTickEnabled="False" />
+    </Border>
+
+    <!-- Единицы измерения — текущие значения -->
+    <Border Grid.Row="2"
+            Background="{StaticResource CardBgBrush}"
+            BorderBrush="{StaticResource CardBorderBrush}"
+            BorderThickness="{StaticResource CardBorderThickness}"
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Padding="{StaticResource CardPadding}">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Единицы измерения"
+                   FontWeight="{StaticResource SemiBoldFontWeight}" />
+        <ItemsControl ItemsSource="{Binding UnitDisplays}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:EmulatorUnitDisplay">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <TextBlock Text="{Binding Name}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Value}"
+                           FontFamily="Consolas"
+                           VerticalAlignment="Center" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <!-- Уставки — delta от текущего -->
+    <Border Grid.Row="3"
+            Background="{StaticResource CardBgBrush}"
+            BorderBrush="{StaticResource CardBorderBrush}"
+            BorderThickness="{StaticResource CardBorderThickness}"
+            CornerRadius="{StaticResource CardCornerRadius}"
+            Padding="{StaticResource CardPadding}">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Уставки (delta от текущего)"
+                   FontWeight="{StaticResource SemiBoldFontWeight}" />
+        <ItemsControl ItemsSource="{Binding SetpointDisplays}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:EmulatorSetpointDisplay">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                <TextBlock Text="{Binding Name}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Raw}"
+                           FontFamily="Consolas"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2"
+                           Text="{Binding Delta}"
+                           FontFamily="Consolas"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+  </Grid>
+</Window>

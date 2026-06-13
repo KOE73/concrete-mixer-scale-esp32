@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MixerScale.Controller.Views.AddRealMixerDialog"
+        Title="Добавить бетономешалку"
+        Width="380"
+        Height="180"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Grid RowDefinitions="Auto,Auto,Auto"
+        Margin="16"
+        RowSpacing="10">
+
+    <Grid ColumnDefinitions="90,*" ColumnSpacing="8">
+      <TextBlock Text="Имя"
+                 VerticalAlignment="Center"
+                 Foreground="{StaticResource TextSecondaryBrush}" />
+      <TextBox x:Name="NameBox"
+               Grid.Column="1"
+               PlaceholderText="Бетономешалка 1" />
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="90,*" ColumnSpacing="8">
+      <TextBlock Text="Адрес"
+                 VerticalAlignment="Center"
+                 Foreground="{StaticResource TextSecondaryBrush}" />
+      <TextBox x:Name="EndpointBox"
+               Grid.Column="1"
+               FontFamily="{StaticResource MonoFontFamily}"
+               PlaceholderText="http://192.168.20.41" />
+    </Grid>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <Button Grid.Column="1"
+              Content="Отмена"
+              Padding="{StaticResource ButtonLargePadding}"
+              Click="CancelClick" />
+      <Button Grid.Column="2"
+              Content="＋ Добавить"
+              Padding="{StaticResource ButtonLargePadding}"
+              Click="AddClick" />
+    </Grid>
+  </Grid>
+</Window>

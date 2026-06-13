@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             x:Class="MixerScale.Controller.Views.FiltersView"
+             x:DataType="vm:FiltersViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <!-- Хост для динамической таблицы MA-фильтров -->
+  <ContentControl x:Name="FiltersTableHost" />
+</UserControl>

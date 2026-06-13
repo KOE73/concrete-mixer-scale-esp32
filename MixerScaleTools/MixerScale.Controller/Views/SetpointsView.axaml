@@ -1,0 +1,172 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             x:Class="MixerScale.Controller.Views.SetpointsView"
+             x:DataType="vm:SetpointsViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <StackPanel Spacing="4" Grid.IsSharedSizeScope="True">
+    <!-- Строка добавления новой уставки (вверху таблицы для выравнивания и удобства) -->
+    <Grid Margin="0,2,0,2"
+          ColumnSpacing="{StaticResource InputGridColumnSpacing}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColRaw" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColDelta" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColUseCurrent" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColSaveAdd" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColDelete" />
+      </Grid.ColumnDefinitions>
+
+      <!-- Имя новой уставки -->
+      <TextBox Text="{Binding NewName}"
+               MaxLength="24"
+               MinWidth="10"
+               Padding="2,1" MinHeight="20"
+               VerticalAlignment="Center"
+               PlaceholderText="имя новой уставки" />
+      <!-- raw новой уставки -->
+      <TextBox Grid.Column="1"
+               Text="{Binding NewRaw}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               Padding="2,1" MinHeight="20"
+               VerticalAlignment="Center"
+               PlaceholderText="raw уставки" />
+      <!-- Delta (пусто для новой) -->
+      <TextBlock Grid.Column="2"
+                 Text=""
+                 MinWidth="50"
+                 HorizontalAlignment="Right" />
+      <!-- ⊙ Текущее значение в raw-поле новой уставки -->
+      <Button Grid.Column="3"
+              Content="⊙"
+              FontSize="14"
+              ToolTip.Tip="Подставить текущее raw"
+              Command="{Binding UseCurrentNewCommand}"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16"
+              HorizontalContentAlignment="Center"
+              VerticalContentAlignment="Center" />
+      <!-- ＋ Добавить -->
+      <Button Grid.Column="4"
+              Content="＋"
+              FontSize="14"
+              ToolTip.Tip="Добавить уставку"
+              Command="{Binding AddCommand}"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16"
+              HorizontalContentAlignment="Center"
+              VerticalContentAlignment="Center" />
+      <!-- Пустая заглушка под кнопку Удалить для выравнивания колонок -->
+      <Button Grid.Column="5"
+              Content="🗑"
+              FontSize="14"
+              Opacity="0"
+              IsEnabled="False"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16" />
+    </Grid>
+
+    <Separator Height="1" Background="{StaticResource TextSecondaryBrush}" Opacity="0.2" Margin="0,2,0,2"/>
+
+    <!-- Стабильные строки уставок -->
+    <ItemsControl ItemsSource="{Binding Rows}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="vm:SetpointRowViewModel">
+          <Grid Margin="0,2,0,2"
+                ColumnSpacing="{StaticResource InputGridColumnSpacing}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColRaw" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColDelta" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColUseCurrent" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColSaveAdd" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColDelete" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Имя уставки -->
+            <TextBox Text="{Binding Name}"
+                     MaxLength="24"
+                     MinWidth="10"
+                     Padding="2,1" MinHeight="20"
+                     VerticalAlignment="Center"
+                     PlaceholderText="имя" />
+            <!-- raw -->
+            <TextBox Grid.Column="1"
+                     Text="{Binding RawText}"
+                     FontFamily="{StaticResource MonoFontFamily}"
+                     Padding="2,1" MinHeight="20"
+                     VerticalAlignment="Center"
+                     PlaceholderText="raw" />
+            <!-- Delta от текущего raw -->
+            <TextBlock Grid.Column="2"
+                       Text="{Binding DeltaText}"
+                       FontFamily="{StaticResource MonoFontFamily}"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Margin="8,0,0,0" />
+            <!-- ⊙ Текущее значение в raw-поле -->
+            <Button Grid.Column="3"
+                    Content="⊙"
+                    FontSize="14"
+                    ToolTip.Tip="Подставить текущее raw"
+                    Command="{Binding UseCurrentCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="2"
+                    MinWidth="16" MinHeight="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+            <!-- 💾 Сохранить -->
+            <Button Grid.Column="4"
+                    Content="💾"
+                    FontSize="14"
+                    ToolTip.Tip="Сохранить"
+                    Command="{Binding SaveCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="2"
+                    MinWidth="16" MinHeight="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+            <!-- 🗑 Удалить -->
+            <Button Grid.Column="5"
+                    Content="🗑"
+                    FontSize="14"
+                    ToolTip.Tip="Удалить"
+                    Command="{Binding DeleteCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="2"
+                    MinWidth="16" MinHeight="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <!-- Статус операции -->
+    <TextBlock Text="{Binding StatusText}"
+               Foreground="{StaticResource TextSecondaryBrush}"
+               IsVisible="{Binding HasStatusText}"
+               TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

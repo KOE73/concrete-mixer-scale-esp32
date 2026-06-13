@@ -1,0 +1,85 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ========================================== -->
+  <!-- Цвета и Кисти (Colors & Brushes)           -->
+  <!-- ========================================== -->
+  
+  <!-- Основной фоновый цвет окна -->
+  <Color x:Key="WindowBgColor">#F3F5F7</Color>
+  <SolidColorBrush x:Key="WindowBgBrush" Color="{StaticResource WindowBgColor}" />
+  
+  <!-- Фоновый цвет шапки (Header) -->
+  <Color x:Key="HeaderBgColor">#17202A</Color>
+  <SolidColorBrush x:Key="HeaderBgBrush" Color="{StaticResource HeaderBgColor}" />
+  
+  <!-- Текст в шапке: белый и второстепенный серо-голубой -->
+  <Color x:Key="TextHeaderPrimaryColor">White</Color>
+  <SolidColorBrush x:Key="TextHeaderPrimaryBrush" Color="{StaticResource TextHeaderPrimaryColor}" />
+  
+  <Color x:Key="TextHeaderSecondaryColor">#B8C4CE</Color>
+  <SolidColorBrush x:Key="TextHeaderSecondaryBrush" Color="{StaticResource TextHeaderSecondaryColor}" />
+  
+  <!-- Фоновые цвета панелей/карточек -->
+  <Color x:Key="CardBgColor">White</Color>
+  <SolidColorBrush x:Key="CardBgBrush" Color="{StaticResource CardBgColor}" />
+  
+  <!-- Цвет границы карточек -->
+  <Color x:Key="CardBorderColor">#CDD6DE</Color>
+  <SolidColorBrush x:Key="CardBorderBrush" Color="{StaticResource CardBorderColor}" />
+  
+  <!-- Второстепенный текст и подписи -->
+  <Color x:Key="TextSecondaryColor">#5C6670</Color>
+  <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+
+
+  <!-- ========================================== -->
+  <!-- Шрифты и Типографика (Fonts & Typography)  -->
+  <!-- ========================================== -->
+  
+  <!-- Семейства шрифтов -->
+  <FontFamily x:Key="MonoFontFamily">Consolas</FontFamily>
+  
+  <!-- Начертания (FontWeights) -->
+  <FontWeight x:Key="SemiBoldFontWeight">SemiBold</FontWeight>
+  <FontWeight x:Key="BoldFontWeight">Bold</FontWeight>
+  
+  <!-- Размеры шрифтов (FontSizes) -->
+  <x:Double x:Key="FontSizeTitle">14</x:Double>
+  <x:Double x:Key="FontSizeLargeValue">14</x:Double>
+  <x:Double x:Key="FontSizeMediumValue">11</x:Double>
+  <x:Double x:Key="FontSizeHeader">10</x:Double>
+  <x:Double x:Key="FontSizeLegend">8</x:Double>
+  <x:Double x:Key="FontSizeSmall">7</x:Double>
+
+
+  <!-- ========================================== -->
+  <!-- Отступы и Размеры (Margins & Paddings)     -->
+  <!-- ========================================== -->
+  
+  <!-- Внутренние отступы (Paddings) -->
+  <Thickness x:Key="HeaderPadding">4,2</Thickness>
+  <Thickness x:Key="CardPadding">2</Thickness>
+  <Thickness x:Key="ButtonLargePadding">2</Thickness>
+  <Thickness x:Key="ButtonMediumPadding">1</Thickness>
+  
+  <!-- Внешние отступы (Margins) -->
+  <Thickness x:Key="MainGridMargin">2</Thickness>
+  <Thickness x:Key="HeaderSubtitleMargin">0</Thickness>
+  <Thickness x:Key="LabelMargin">0</Thickness>
+  
+  <!-- Толщина границ (Thickness) -->
+  <Thickness x:Key="CardBorderThickness">1</Thickness>
+  
+  <!-- Скругления углов (CornerRadius) -->
+  <CornerRadius x:Key="CardCornerRadius">2</CornerRadius>
+  
+  <!-- Интервалы между элементами (Spacings) -->
+  <x:Double x:Key="MainGridColumnSpacing">2</x:Double>
+  <x:Double x:Key="MainGridRowSpacing">2</x:Double>
+  <x:Double x:Key="CardStackSpacing">1</x:Double>
+  <x:Double x:Key="InputGridColumnSpacing">2</x:Double>
+  <x:Double x:Key="InputGridRowSpacing">1</x:Double>
+  <x:Double x:Key="HeaderStackSpacing">0</x:Double>
+
+</ResourceDictionary>

@@ -1,0 +1,144 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             x:Class="MixerScale.Controller.Views.UnitsView"
+             x:DataType="vm:UnitsViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <StackPanel Spacing="4" Grid.IsSharedSizeScope="True">
+    <!-- Строка добавления новой единицы (вверху для выравнивания и постоянства индексов) -->
+    <Grid Margin="0,2,0,2"
+          ColumnSpacing="{StaticResource InputGridColumnSpacing}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitRaw" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitVal" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitSaveAdd" />
+        <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitDelete" />
+      </Grid.ColumnDefinitions>
+
+      <!-- Имя новой единицы -->
+      <TextBox Text="{Binding NewName}"
+               MaxLength="5"
+               MinWidth="10"
+               Padding="2,1" MinHeight="20"
+               VerticalAlignment="Center"
+               PlaceholderText="ед." />
+      <!-- raw/ед новой единицы -->
+      <TextBox Grid.Column="1"
+               Text="{Binding NewRaw}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               Padding="2,1" MinHeight="20"
+               VerticalAlignment="Center"
+               PlaceholderText="raw/ед." />
+      <!-- Текущее значение (пусто для новой) -->
+      <TextBlock Grid.Column="2"
+                 Text=""
+                 MinWidth="50"
+                 HorizontalAlignment="Right" />
+      <!-- ＋ Добавить -->
+      <Button Grid.Column="3"
+              Content="＋"
+              FontSize="14"
+              ToolTip.Tip="Добавить единицу"
+              Command="{Binding AddCommand}"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16"
+              HorizontalContentAlignment="Center"
+              VerticalContentAlignment="Center" />
+      <!-- Заглушка под кнопку Удалить -->
+      <Button Grid.Column="4"
+              Content="🗑"
+              FontSize="14"
+              Opacity="0"
+              IsEnabled="False"
+              Padding="0"
+              Margin="2"
+              MinWidth="16" MinHeight="16" />
+    </Grid>
+
+    <Separator Height="1" Background="{StaticResource TextSecondaryBrush}" Opacity="0.2" Margin="0,2,0,2"/>
+
+    <!-- Список существующих единиц (стабильные строки через ItemsControl) -->
+    <ItemsControl ItemsSource="{Binding Rows}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="vm:UnitRowViewModel">
+          <Grid Margin="0,2,0,2"
+                ColumnSpacing="{StaticResource InputGridColumnSpacing}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitRaw" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitVal" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitSaveAdd" />
+              <ColumnDefinition Width="Auto" SharedSizeGroup="ColUnitDelete" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Имя единицы -->
+            <TextBox Text="{Binding Name}"
+                     MaxLength="5"
+                     MinWidth="10"
+                     Padding="2,1" MinHeight="20"
+                     VerticalAlignment="Center"
+                     FontFamily="{StaticResource MonoFontFamily}" />
+            <!-- raw/ед -->
+            <TextBox Grid.Column="1"
+                     Text="{Binding RawText}"
+                     FontFamily="{StaticResource MonoFontFamily}"
+                     Padding="2,1" MinHeight="20"
+                     VerticalAlignment="Center"
+                     PlaceholderText="raw/ед." />
+            <!-- Текущее значение -->
+            <TextBlock Grid.Column="2"
+                       Text="{Binding CurrentValueText}"
+                       FontFamily="{StaticResource MonoFontFamily}"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Margin="8,0,0,0" />
+            <!-- 💾 Сохранить -->
+            <Button Grid.Column="3"
+                    Content="💾"
+                    FontSize="14"
+                    ToolTip.Tip="Сохранить"
+                    Command="{Binding SaveCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="2"
+                    MinWidth="16" MinHeight="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+            <!-- 🗑 Удалить -->
+            <Button Grid.Column="4"
+                    Content="🗑"
+                    FontSize="14"
+                    ToolTip.Tip="Удалить"
+                    Command="{Binding DeleteCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="2"
+                    MinWidth="16" MinHeight="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <!-- Статус операции -->
+    <TextBlock Text="{Binding StatusText}"
+               Foreground="{StaticResource TextSecondaryBrush}"
+               IsVisible="{Binding HasStatusText}"
+               TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

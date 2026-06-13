@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             x:Class="MixerScale.Controller.Views.GraphView"
+             x:DataType="vm:GraphViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="{StaticResource CardStackSpacing}">
+
+    <!-- Заголовок и длительность -->
+    <Grid ColumnDefinitions="*,Auto,80" ColumnSpacing="{StaticResource InputGridColumnSpacing}">
+      <TextBlock Text="График"
+                 FontSize="{StaticResource FontSizeHeader}"
+                 FontWeight="{StaticResource SemiBoldFontWeight}"
+                 VerticalAlignment="Center" />
+      <TextBlock Grid.Column="1" Text="сек"
+                 VerticalAlignment="Center"
+                 Foreground="{StaticResource TextSecondaryBrush}" />
+      <TextBox x:Name="DurationBox"
+               Grid.Column="2"
+               Text="{Binding DurationSeconds}"
+               FontFamily="{StaticResource MonoFontFamily}" />
+    </Grid>
+
+    <!-- Холст графика -->
+    <ContentControl x:Name="GraphHost"
+                    Grid.Row="1"
+                    MinHeight="220" />
+
+    <!-- Легенда -->
+    <TextBlock Grid.Row="2"
+               Text="{Binding LegendText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontSize="{StaticResource FontSizeLegend}"
+               TextWrapping="Wrap" />
+  </Grid>
+</UserControl>

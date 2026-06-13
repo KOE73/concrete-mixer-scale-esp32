@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             xmlns:views="clr-namespace:MixerScale.Controller.Views"
+             x:Class="MixerScale.Controller.Views.MetricsView"
+             x:DataType="vm:MetricsViewModel">
+
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+
+  <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
+    <!-- Row 0 -->
+    <TextBlock Grid.Row="0" Grid.Column="0" Text="raw" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RawSumText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontWeight="{StaticResource SemiBoldFontWeight}" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="0" Grid.Column="2" Text="seq" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding SequenceText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontWeight="{StaticResource SemiBoldFontWeight}"
+               Foreground="{Binding ConnectionBrush}" VerticalAlignment="Center" />
+
+    <!-- Row 1 -->
+    <TextBlock Grid.Row="1" Grid.Column="0" Text="clean" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CleanSumText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontWeight="{StaticResource SemiBoldFontWeight}" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="1" Grid.Column="2" Text="sample" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding SampleStateText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontSize="11"
+               FontWeight="{StaticResource SemiBoldFontWeight}" VerticalAlignment="Center" />
+
+    <!-- Row 2 -->
+    <TextBlock Grid.Row="2" Grid.Column="0" Text="MA" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PrimaryMaText}"
+               FontFamily="{StaticResource MonoFontFamily}"
+               FontWeight="{StaticResource SemiBoldFontWeight}" VerticalAlignment="Center" />
+    
+    <!-- Кнопка эмулятора (в правом нижнем углу) -->
+    <Button Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" Grid.ColumnSpan="2"
+            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            Content="⚙"
+            FontSize="16"
+            Foreground="{StaticResource TextPrimaryBrush}"
+            IsVisible="{Binding $parent[views:MixerView].((vm:MixerViewModel)DataContext).IsEmulator}"
+            Command="{Binding $parent[views:MixerView].((vm:MixerViewModel)DataContext).OpenEmulatorSettingsCommand}"
+            Background="Transparent"
+            BorderThickness="0"
+            Padding="0" MinHeight="0" MinWidth="0"
+            Cursor="Hand"
+            ToolTip.Tip="Настройки эмулятора" />
+  </Grid>
+</UserControl>

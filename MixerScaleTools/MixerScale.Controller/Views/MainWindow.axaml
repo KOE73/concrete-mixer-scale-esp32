@@ -1,274 +1,75 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+        xmlns:views="clr-namespace:MixerScale.Controller.Views"
         x:Class="MixerScale.Controller.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
         Title="MixerScale Controller"
-        Width="1180"
-        Height="760"
-        MinWidth="940"
-        MinHeight="620">
-  <Grid RowDefinitions="Auto,*"
-        Background="#F3F5F7">
-    <Border Grid.Row="0"
-            Background="#17202A"
-            Padding="16,8">
-      <Grid ColumnDefinitions="*,Auto"
-            RowDefinitions="Auto,Auto">
-        <TextBlock x:Name="TitleTextBlock"
-                   Grid.Row="0"
-                   Grid.Column="0"
-                   Text="MixerScale Controller"
-                   Foreground="White"
-                   FontSize="22"
-                   FontWeight="SemiBold" />
-        <TextBlock x:Name="EndpointText"
-                   Grid.Row="1"
-                   Grid.Column="0"
-                   Foreground="#B8C4CE"
-                   FontFamily="Consolas"
-                   Margin="0,3,0,0" />
-        <StackPanel Grid.Row="0"
-                    Grid.RowSpan="2"
-                    Grid.Column="1"
-                    Orientation="Vertical"
-                    Spacing="2"
+        Width="1400"
+        Height="900"
+        MinWidth="1000"
+        MinHeight="700"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
+
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Grid RowDefinitions="Auto,*">
+    <!-- Заголовок, чтобы окно можно было таскать за шапку, 
+         и чтобы табы не наезжали на кнопки управления окном -->
+    <Border Grid.Row="0" Height="30" IsHitTestVisible="False" Background="Transparent" />
+
+    <!-- Вкладки (бетономешалки + настройки) -->
+    <TabControl Grid.Row="1"
+                ItemsSource="{Binding Tabs}"
+                SelectedItem="{Binding SelectedTab}">
+      <TabControl.DataTemplates>
+        <!-- Вкладка бетономешалки -->
+        <DataTemplate DataType="vm:MixerViewModel">
+          <views:MixerView />
+        </DataTemplate>
+        <!-- Вкладка настроек -->
+        <DataTemplate DataType="vm:SettingsViewModel">
+          <StackPanel Margin="32" Spacing="16">
+            <TextBlock Text="Настройки приложения" FontSize="24" FontWeight="SemiBold" />
+            
+            <TextBlock Text="Добавление новых подключений:" Foreground="{StaticResource TextSecondaryBrush}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="＋ Реальные весы"
+                      Click="OnAddRealClick"
+                      Padding="{StaticResource ButtonLargePadding}" />
+              <Button Content="＋ Эмулятор весов"
+                      Command="{Binding Main.AddEmulatorCommand}"
+                      Padding="{StaticResource ButtonLargePadding}" />
+            </StackPanel>
+          </StackPanel>
+        </DataTemplate>
+      </TabControl.DataTemplates>
+
+      <TabControl.ItemTemplate>
+        <DataTemplate x:CompileBindings="False">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Header}" VerticalAlignment="Center" />
+            <Button Content="✕"
+                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RemoveMixerCommand}"
+                    CommandParameter="{Binding}"
+                    IsVisible="{Binding Header, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    Classes="CloseTab"
+                    ToolTip.Tip="Удалить"
+                    Width="24" Height="24"
+                    Padding="0"
                     VerticalAlignment="Center"
-                    HorizontalAlignment="Right">
-          <TextBlock x:Name="HeaderWifiText"
-                     Foreground="#B8C4CE"
-                     FontSize="11"
-                     FontFamily="Consolas"
-                     TextAlignment="Right" />
-          <TextBlock x:Name="HeaderUdpText"
-                     Foreground="#B8C4CE"
-                     FontSize="11"
-                     FontFamily="Consolas"
-                     TextAlignment="Right" />
-        </StackPanel>
-      </Grid>
-    </Border>
-
-    <Grid Grid.Row="1"
-          ColumnDefinitions="2*,*"
-          RowDefinitions="Auto,*"
-          Margin="14"
-          ColumnSpacing="14"
-          RowSpacing="14">
-      <Border Grid.Row="0"
-              Grid.Column="0"
-              Grid.ColumnSpan="2"
-              Background="White"
-              BorderBrush="#CDD6DE"
-              BorderThickness="1"
-              CornerRadius="6"
-              Padding="12">
-        <Grid ColumnDefinitions="*,*,*,*,*">
-          <StackPanel>
-            <TextBlock Text="seq"
-                       Foreground="#5C6670" />
-            <TextBlock x:Name="SequenceText"
-                       FontFamily="Consolas"
-                       FontSize="22"
-                       FontWeight="SemiBold" />
+                    Background="Transparent"
+                    BorderThickness="0" />
           </StackPanel>
-          <StackPanel Grid.Column="1">
-            <TextBlock Text="rawSum"
-                       Foreground="#5C6670" />
-            <TextBlock x:Name="RawSumText"
-                       FontFamily="Consolas"
-                       FontSize="22"
-                       FontWeight="SemiBold" />
-          </StackPanel>
-          <StackPanel Grid.Column="2">
-            <TextBlock Text="cleanSum"
-                       Foreground="#5C6670" />
-            <TextBlock x:Name="CleanSumText"
-                       FontFamily="Consolas"
-                       FontSize="22"
-                       FontWeight="SemiBold" />
-          </StackPanel>
-          <StackPanel Grid.Column="3">
-            <TextBlock Text="MA"
-                       Foreground="#5C6670" />
-            <TextBlock x:Name="PrimaryMaText"
-                       FontFamily="Consolas"
-                       FontSize="22"
-                       FontWeight="SemiBold" />
-          </StackPanel>
-          <StackPanel Grid.Column="4">
-            <TextBlock Text="sample"
-                       Foreground="#5C6670" />
-            <TextBlock x:Name="SampleStateText"
-                       FontFamily="Consolas"
-                       FontSize="18"
-                       FontWeight="SemiBold" />
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <Grid Grid.Row="1"
-            Grid.Column="0"
-            RowDefinitions="Auto,*"
-            RowSpacing="14">
-        <Border Grid.Row="0"
-                Background="White"
-                BorderBrush="#CDD6DE"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-          <Grid RowDefinitions="Auto">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled">
-              <ContentControl x:Name="FiltersTableHost" />
-            </ScrollViewer>
-          </Grid>
-        </Border>
-        <Border Grid.Row="1"
-                Background="White"
-                BorderBrush="#CDD6DE"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-          <Grid RowDefinitions="Auto,*,Auto"
-                RowSpacing="8">
-            <Grid ColumnDefinitions="*,Auto,90"
-                  ColumnSpacing="8">
-              <TextBlock Text="График"
-                         FontSize="16"
-                         FontWeight="SemiBold"
-                         VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1"
-                         Text="сек"
-                         VerticalAlignment="Center"
-                         Foreground="#5C6670" />
-              <TextBox x:Name="GraphDurationInput"
-                       Grid.Column="2"
-                       Text="60"
-                       FontFamily="Consolas" />
-            </Grid>
-            <ContentControl x:Name="GraphHost"
-                            Grid.Row="1"
-                            MinHeight="220" />
-            <TextBlock x:Name="GraphLegendText"
-                       Grid.Row="2"
-                       FontFamily="Consolas"
-                       FontSize="12"
-                       TextWrapping="Wrap" />
-          </Grid>
-        </Border>
-      </Grid>
-
-      <Grid Grid.Row="1"
-            Grid.Column="1"
-            RowDefinitions="Auto,*"
-            RowSpacing="14">
-        <Border Grid.Row="0"
-                Background="White"
-                BorderBrush="#CDD6DE"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-          <StackPanel Spacing="8">
-            <TextBlock Text="Калибровка"
-                       FontSize="16"
-                       FontWeight="SemiBold" />
-            <TextBlock x:Name="SettingsText"
-                       FontFamily="Consolas"
-                       TextWrapping="Wrap" />
-            <Grid ColumnDefinitions="Auto,*"
-                  RowDefinitions="Auto,Auto"
-                  ColumnSpacing="8"
-                  RowSpacing="6">
-              <TextBlock Text="sumOffset"
-                         VerticalAlignment="Center"
-                         Foreground="#5C6670" />
-              <TextBox x:Name="SumOffsetInput"
-                       Grid.Column="1"
-                       FontFamily="Consolas" />
-              <TextBlock Grid.Row="1"
-                         Text="sumScale"
-                         VerticalAlignment="Center"
-                         Foreground="#5C6670" />
-              <TextBox x:Name="SumScaleInput"
-                       Grid.Row="1"
-                       Grid.Column="1"
-                       FontFamily="Consolas" />
-            </Grid>
-            <Grid ColumnDefinitions="*,Auto,Auto"
-                  ColumnSpacing="8">
-              <ComboBox x:Name="ZeroSourceCombo"
-                        MinWidth="150" />
-              <Button x:Name="ZeroButton"
-                      Grid.Column="1"
-                      Content="Zero"
-                      Padding="12,6" />
-              <Button x:Name="SaveCalibrationButton"
-                      Grid.Column="2"
-                      Content="Сохранить"
-                      Padding="12,6" />
-            </Grid>
-            <TextBlock Text="Попугаи"
-                       FontWeight="SemiBold"
-                       Margin="0,4,0,0" />
-            <ItemsControl x:Name="UnitsList" />
-            <Grid ColumnDefinitions="58,*,Auto"
-                  ColumnSpacing="8">
-              <TextBox x:Name="UnitNameInput"
-                       MaxLength="5"
-                       Watermark="ед." />
-              <TextBox x:Name="UnitRawInput"
-                       Grid.Column="1"
-                       FontFamily="Consolas"
-                       Watermark="raw/ед." />
-              <Button x:Name="AddUnitButton"
-                      Grid.Column="2"
-                      Content="Добавить"
-                      Padding="10,6" />
-            </Grid>
-            <TextBlock x:Name="CalibrationStatusText"
-                       Foreground="#5C6670"
-                       TextWrapping="Wrap" />
-            <TextBlock Text="Уставки"
-                       FontWeight="SemiBold"
-                       Margin="0,4,0,0" />
-            <ItemsControl x:Name="SetpointsList" />
-            <Grid ColumnDefinitions="*,*,Auto,Auto"
-                  ColumnSpacing="8">
-              <TextBox x:Name="SetpointNameInput"
-                       MaxLength="24"
-                       Watermark="имя" />
-              <TextBox x:Name="SetpointRawInput"
-                       Grid.Column="1"
-                       FontFamily="Consolas"
-                       Watermark="raw" />
-              <Button x:Name="UseCurrentSetpointButton"
-                      Grid.Column="2"
-                      Content="Текущее"
-                      Padding="10,6" />
-              <Button x:Name="AddSetpointButton"
-                      Grid.Column="3"
-                      Content="Добавить"
-                      Padding="10,6" />
-            </Grid>
-          </StackPanel>
-        </Border>
-
-        <Border Grid.Row="1"
-                Background="White"
-                BorderBrush="#CDD6DE"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12">
-          <StackPanel Spacing="5">
-            <TextBlock Text="API"
-                       FontSize="16"
-                       FontWeight="SemiBold" />
-            <TextBlock x:Name="ApiStatusText"
-                       FontFamily="Consolas"
-                       FontSize="12"
-                       TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
-      </Grid>
-    </Grid>
+        </DataTemplate>
+      </TabControl.ItemTemplate>
+    </TabControl>
   </Grid>
 </Window>
