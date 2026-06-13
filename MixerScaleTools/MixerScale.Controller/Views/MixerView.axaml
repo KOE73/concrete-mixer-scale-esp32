@@ -32,17 +32,34 @@
       </ScrollViewer>
     </Border>
 
-    <!-- Строка 1, левая колонка: График -->
-    <Border Grid.Row="1" Grid.Column="0"
-            Background="{StaticResource CardBgBrush}"
-            BorderBrush="{StaticResource CardBorderBrush}"
-            BorderThickness="{StaticResource CardBorderThickness}"
-            CornerRadius="{StaticResource CardCornerRadius}"
-            Padding="{StaticResource CardPadding}">
-      <views:GraphView DataContext="{Binding Graph}" />
-    </Border>
+    <!-- Строка 1, левая колонка: График и Дашборд -->
+    <Grid Grid.Row="1" Grid.Column="0" ColumnDefinitions="*,Auto" ColumnSpacing="{StaticResource MainGridColumnSpacing}">
+      <Border Grid.Column="0"
+              Background="{StaticResource CardBgBrush}"
+              BorderBrush="{StaticResource CardBorderBrush}"
+              BorderThickness="{StaticResource CardBorderThickness}"
+              CornerRadius="{StaticResource CardCornerRadius}"
+              Padding="{StaticResource CardPadding}">
+        <views:GraphView DataContext="{Binding Graph}" />
+      </Border>
+      
+      <!-- Дашборд -->
+      <Border Grid.Column="1"
+              Background="{StaticResource CardBgBrush}"
+              BorderBrush="{StaticResource CardBorderBrush}"
+              BorderThickness="{StaticResource CardBorderThickness}"
+              CornerRadius="{StaticResource CardCornerRadius}"
+              Padding="{StaticResource CardPadding}">
+        <Grid RowDefinitions="Auto,*">
+          <Button Grid.Row="0" HorizontalAlignment="Right" Content="⛶ Крупно" 
+                  Command="{Binding OpenFullscreenDashboardCommand}" 
+                  Classes="CloseTab" Background="Transparent" BorderThickness="0" Cursor="Hand" />
+          <views:DashboardView Grid.Row="1" DataContext="{Binding Dashboard}" />
+        </Grid>
+      </Border>
+    </Grid>
 
-    <!-- Правая колонка: Прокручиваемый список настроек (Метрики, Калибровка, Единицы, Уставки, API) -->
+    <!-- Правая колонка: Прокручиваемый список настроек -->
     <ScrollViewer Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
                   VerticalScrollBarVisibility="Auto">
       <StackPanel Spacing="{StaticResource MainGridRowSpacing}">

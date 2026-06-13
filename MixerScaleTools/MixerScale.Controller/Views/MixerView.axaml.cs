@@ -15,10 +15,11 @@ internal sealed partial class MixerView : UserControl
     {
         base.OnDataContextChanged(e);
 
-        // Подписываемся на запрос открытия окна эмулятора
+        // Подписываемся на запросы открытия окон
         if (DataContext is MixerViewModel vm)
         {
             vm.EmulatorWindowRequested += OpenEmulatorWindow;
+            vm.DashboardFullscreenRequested += OpenDashboardWindow;
         }
     }
 
@@ -31,6 +32,21 @@ internal sealed partial class MixerView : UserControl
         if (parent is not null)
         {
             window.Show(parent);
+        }
+        else
+        {
+            window.Show();
+        }
+    }
+
+    private void OpenDashboardWindow(DashboardViewModel dashVm)
+    {
+        var window = new DashboardWindow { DataContext = dashVm };
+
+        var parent = TopLevel.GetTopLevel(this) as Window;
+        if (parent is not null)
+        {
+            window.ShowDialog(parent); // Модально, чтобы не кликать мимо дашборда
         }
         else
         {

@@ -16,6 +16,7 @@
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://MixerScale.Controller/Views/Styles.axaml" />
+        <ResourceInclude Source="avares://MixerScale.Controller/Views/DashboardColors.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Window.Resources>

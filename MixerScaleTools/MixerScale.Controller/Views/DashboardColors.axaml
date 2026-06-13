@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Светофор -->
+    <SolidColorBrush x:Key="DashboardTrafficLightGreen" Color="#22A06B" />
+    <SolidColorBrush x:Key="DashboardTrafficLightYellow" Color="#F5CD47" />
+    <SolidColorBrush x:Key="DashboardTrafficLightRed" Color="#C9372C" />
+    <SolidColorBrush x:Key="DashboardTrafficLightOff" Color="#444444" />
+
+    <!-- Шкала -->
+    <SolidColorBrush x:Key="DashboardBarBackground" Color="#EAEAEA" />
+    <SolidColorBrush x:Key="DashboardBarFill" Color="#2684FF" />
+    <SolidColorBrush x:Key="DashboardBarOverfill" Color="#C9372C" />
+    
+    <!-- Текст и линии -->
+    <SolidColorBrush x:Key="DashboardLineColor" Color="#172B4D" />
+    <SolidColorBrush x:Key="DashboardTextColor" Color="#172B4D" />
+    <SolidColorBrush x:Key="DashboardTextSecondaryColor" Color="#6B778C" />
+</ResourceDictionary>

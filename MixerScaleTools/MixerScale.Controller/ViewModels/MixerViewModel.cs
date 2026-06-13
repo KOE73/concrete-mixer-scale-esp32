@@ -22,6 +22,7 @@ internal sealed partial class MixerViewModel : ObservableObject, IDisposable
     public CalibrationViewModel Calibration { get; }
     public GraphViewModel Graph { get; }
     public ApiStatusViewModel ApiStatus { get; }
+    public DashboardViewModel Dashboard { get; }
 
     /// <summary>True если сервис — эмулятор, т.е. реализует IEmulatorControl.</summary>
     public bool IsEmulator => Service is IEmulatorControl;
@@ -35,8 +36,20 @@ internal sealed partial class MixerViewModel : ObservableObject, IDisposable
         Calibration = new CalibrationViewModel(service);
         Graph       = new GraphViewModel();
         ApiStatus   = new ApiStatusViewModel();
+        Dashboard   = new DashboardViewModel();
 
         service.StateUpdated += OnStateUpdated;
+    }
+
+    /// <summary>
+    /// Событие, на которое подписывается View для открытия окна дашборда.
+    /// </summary>
+    public event Action<DashboardViewModel>? DashboardFullscreenRequested;
+
+    [RelayCommand]
+    private void OpenFullscreenDashboard()
+    {
+        DashboardFullscreenRequested?.Invoke(Dashboard);
     }
 
     [RelayCommand]
@@ -74,6 +87,9 @@ internal sealed partial class MixerViewModel : ObservableObject, IDisposable
         Calibration.Update(weight, settings);
         Graph.Update(weight, settings);
         ApiStatus.Update(Service.LastCallStatuses, Service.LastWifi, Service.LastUdp);
+        
+        if (settings != null) Dashboard.UpdateSetpoints(settings.Setpoints);
+        if (weight != null) Dashboard.UpdateLiveWeight(weight);
     }
 
     public void Dispose()

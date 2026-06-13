@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MixerScale.Controller.ViewModels"
+             xmlns:views="clr-namespace:MixerScale.Controller.Views"
+             x:Class="MixerScale.Controller.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+    
+    <Grid>
+        <ItemsControl ItemsSource="{Binding Indicators}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Rows="1" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:IndicatorViewModel">
+                    <Grid RowDefinitions="*,Auto" Margin="16" MinWidth="120">
+                        <!-- Светофор и Шкала (рисуются внутри контрола) -->
+                        <views:IndicatorBarControl Grid.Row="0"
+                                                   Minimum="{Binding Minimum}"
+                                                   Maximum="{Binding Maximum}"
+                                                   Setpoint="{Binding Setpoint}"
+                                                   Value="{Binding Value}"
+                                                   MagnifierRangeRatio="0.2"
+                                                   TrafficLightState="{Binding TrafficLightState}"
+                                                   IsOverfill="{Binding IsOverfill}"
+                                                   GreenBrush="{StaticResource DashboardTrafficLightGreen}"
+                                                   YellowBrush="{StaticResource DashboardTrafficLightYellow}"
+                                                   RedBrush="{StaticResource DashboardTrafficLightRed}"
+                                                   FillBrush="{StaticResource DashboardBarFill}"
+                                                   OverfillBrush="{StaticResource DashboardBarOverfill}"
+                                                   BackgroundBrush="{StaticResource DashboardBarBackground}"
+                                                   SetpointLineBrush="{StaticResource DashboardLineColor}" />
+                                                   
+                        <!-- Подпись -->
+                        <StackPanel Grid.Row="1" Margin="0,16,0,0" HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" 
+                                       FontSize="24" FontWeight="Bold" 
+                                       Foreground="{StaticResource DashboardTextColor}"
+                                       TextAlignment="Center" />
+                            <TextBlock Text="{Binding Value, StringFormat={}{0:N0}}" 
+                                       FontSize="20"
+                                       Foreground="{StaticResource DashboardTextSecondaryColor}"
+                                       TextAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Grid>
+</UserControl>
